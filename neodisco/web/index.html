@@ -42,9 +42,12 @@
 <main class="stage" id="stage">
   <div class="frame" id="frame">
     <i aria-hidden="true"></i>
-    <p class="placeholder" id="placeholder">
-      <span lang="en">write a prompt</span><span lang="tr">bir prompt yaz</span>
-    </p>
+    <div class="ghost" id="ghost" style="aspect-ratio: 1280 / 768; width: 1280px;">
+      <span class="dim">
+        <em id="ghost-dim">1280 &times; 768</em>
+        <span id="ghost-note"><span lang="en">write a prompt</span><span lang="tr">bir prompt yaz</span></span>
+      </span>
+    </div>
   </div>
 </main>
 
@@ -52,17 +55,20 @@
 
 <form class="console" id="form">
   <div class="ratios" id="ratios" role="group" aria-label="Aspect ratio">
-    <button type="button" data-w="768"  data-h="768"  aria-pressed="false">1:1</button>
-    <button type="button" data-w="1152" data-h="768"  aria-pressed="false">3:2</button>
-    <button type="button" data-w="1280" data-h="768"  aria-pressed="true">5:3</button>
-    <button type="button" data-w="1024" data-h="576"  aria-pressed="false">16:9</button>
-    <button type="button" data-w="768"  data-h="1152" aria-pressed="false">2:3</button>
-    <button type="button" data-w="576"  data-h="1024" aria-pressed="false">9:16</button>
+    <button type="button" data-w="768"  data-h="768"  aria-pressed="false">1:1<b>768&times;768</b></button>
+    <button type="button" data-w="1152" data-h="768"  aria-pressed="false">3:2<b>1152&times;768</b></button>
+    <button type="button" data-w="1280" data-h="768"  aria-pressed="true">5:3<b>1280&times;768</b></button>
+    <button type="button" data-w="1024" data-h="576"  aria-pressed="false">16:9<b>1024&times;576</b></button>
+    <button type="button" data-w="768"  data-h="1152" aria-pressed="false">2:3<b>768&times;1152</b></button>
+    <button type="button" data-w="576"  data-h="1024" aria-pressed="false">9:16<b>576&times;1024</b></button>
   </div>
   <div class="entry">
     <span class="caret" aria-hidden="true">&rsaquo;</span>
     <textarea id="prompt" rows="1" spellcheck="false" enterkeyhint="go"
       placeholder="a colossal derelict starship drifting past a gas giant, by greg rutkowski and john berkey, Trending on artstation."></textarea>
+    <button class="icon-btn" id="dice" type="button" title="Example prompt" aria-label="Example prompt">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Zm3 3.6a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8Zm8 0a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8Zm-4 4a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8Zm-4 4a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8Zm8 0a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8Z"/></svg>
+    </button>
     <button id="go" type="submit"><span lang="en">Generate</span><span lang="tr">Üret</span></button>
   </div>
 </form>
