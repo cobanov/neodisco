@@ -133,6 +133,17 @@ python -m neodisco.cli "an ukiyo-e woodblock print::1.0" "neon::0.4" --image-siz
 | `--grad-checkpoint` | trades speed for memory inside the UNet |
 | `--fp16` | half-precision UNet; opt-in, see the notes below |
 
+### What the strength knob does
+
+![clamp sweep](examples/pixel-clamp-sweep.png)
+
+The one knob Disco actually exposed for guidance strength is `clamp_max`, the cap on the
+gradient's RMS per step. Left to right: 0.02, 0.05 (Disco's default), 0.10. Same seed,
+same prompt (*a fractal cathedral of glowing coral, intricate, dreamlike*), Crowson's 512
+model with the secondary model, 250 steps. At 0.02 the prior mostly wins and you get
+coral; at 0.05 the cathedral arrives; at 0.10 the prompt is grinding hard enough that the
+frame starts to bloom and the range term has to hold it in.
+
 ## Why nothing else looks like this
 
 The Disco look was never a style you could ask a model for. It was the visible
