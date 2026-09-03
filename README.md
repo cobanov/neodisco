@@ -24,9 +24,9 @@ on a card made after 2022.
 The models themselves are fine. They are still downloadable, they still work, and
 this repository runs them.
 
-The image above is OpenAI's 256x256 unconditional ImageNet model from July 2021, on
-an RTX 5090 under PyTorch 2.11. Guidance strength 0.5, 2.0, 8.0, left to right.
-Prompt: *a fractal cathedral of glowing coral, intricate, dreamlike*.
+Above is `examples/cobanov-spaceship.json`, a settings file from 2022 run unchanged on an
+RTX 5090 under PyTorch 2.11: Crowson's 512 model at 1280x768, three CLIP backbones, Disco's
+cutout schedules, `eta 0.8`, the original seed.
 
 - **The original checkpoints, not a lookalike.** Both unconditional ImageNet
   diffusion models Disco used, loaded as they are.
@@ -85,15 +85,7 @@ video keys are ignored; everything else comes through.
 python -m neodisco.cli --disco-config examples/cobanov-spaceship.json --out spaceship.png
 ```
 
-![a Disco settings file from 2022, run today](examples/cobanov-spaceship-1280x768.png)
-
-That is `examples/cobanov-spaceship.json`, a settings file from 2022, run unchanged:
-Crowson's 512 model at 1280x768, three CLIP backbones, Disco's cutout schedules,
-`eta 0.8`, the original seed. *An enormous sci-fi spaceship attacking a massive
-deathstar in front of a black hole, by Greg Rutkowski and Thomas Kinkade; blue color
-scheme.*
-
-Any flag given on the command line overrides the file, so a quick low-resolution
+That is the picture at the top of this page. Any flag given on the command line overrides the file, so a quick low-resolution
 preview of an old config is:
 
 ```bash
@@ -153,17 +145,16 @@ python -m neodisco.cli --disco-config settings.json --width 1280 --height 768 \
 | Flag | Does |
 |---|---|
 | `--clamp-max` | Disco's guidance strength: the cap on the gradient's RMS per step. 0.02 calm, 0.05 default, 0.10 intense |
-| `--strength` | only used with `--clamp-max 0`: a step-relative scale instead of Disco's cap |
 | `--eta` | 0 is deterministic DDIM, 1 is ancestral DDPM. Disco used 0.8 |
-| `--cutn-batches` | how many independent cutout draws are averaged per step |
 | `--overview-cuts` | how much the prompt affects overall composition. A number, or a Disco schedule string like `"[12]*400+[4]*600"` |
 | `--inner-cuts` | detail density. Low is calm, high is the full fractal surface |
 | `--steps` | how long the prior and the guidance are allowed to fight |
 | `--tv-scale` | smooths the speckle that guidance introduces. 0 is grittier |
-| `--clip-models` | more backbones means more compositing, less literal |
-| `--cut-batch` | memory only. Lower it if the card runs out |
-| `--grad-checkpoint` | trades speed for memory inside the UNet |
-| `--fp16` | half-precision UNet; opt-in, see the notes below |
+
+`--cutn-batches` averages more independent cutout draws per step, `--clip-models` adds
+backbones (more compositing, less literal), and `--cut-batch` and `--grad-checkpoint` trade
+memory against speed without changing the picture. `--strength` is the step-relative scale
+used only with `--clamp-max 0`. `--help` has the rest.
 
 ### What the strength knob does
 
@@ -225,20 +216,18 @@ Profile of one step at 1280x768 after these changes: UNet forward ~256 ms, CLIP 
 
 ## How it is built
 
-Four things go wrong in ways that are quiet rather than loud, and all four cost time.
+These go wrong in ways that are quiet rather than loud, and every one of them cost time.
 
-**An absolute guidance scale does not survive the sampler.** Disco's `clamp_max=0.05`
-is tuned for its own step parameterisation. Carry the number across to a different
-sampler and the guidance term, once multiplied by the step size, rounds away to
-nothing: the image comes out clean, coherent and completely ignoring the prompt. Here
-the gradient is normalised and scaled relative to the step's own magnitude, so
-`--strength 1.0` means the prompt pulls about as hard as the prior does, whatever the
-sampler.
+**An absolute guidance scale does not survive the sampler.** Disco's `clamp_max=0.05` is
+tuned for its own step parameterisation. Carry it to a different sampler and the guidance
+term, once multiplied by the step size, rounds away to nothing: the image comes out clean,
+coherent and completely ignoring the prompt. `--strength` exists for that case, scaling the
+gradient relative to the step's own magnitude instead.
 
 **The clean-image estimate should not be rebuilt from the noise prediction.** Writing
-`eps = (x - sqrt(a) * x0) / sqrt(1 - a)` and then differentiating through it is the
-obvious formulation and it divides by zero at the end of sampling. Take the gradient
-with respect to the estimate directly and divide by `sqrt(alpha_bar)` instead.
+`eps = (x - sqrt(a) * x0) / sqrt(1 - a)` and differentiating through it is the obvious
+formulation, and it divides by zero at the end of sampling. Take the gradient with respect
+to the estimate directly and divide by `sqrt(alpha_bar)`.
 
 **Do not hand-roll the DDIM step.** The update looks like four lines of algebra, and the
 trap is `alphas_cumprod_prev`: on a respaced schedule the previous step is not index
@@ -265,9 +254,9 @@ tokens overflows on some seeds and the frame comes out blank. The sampler now st
 with a clear error instead of writing the blank. The UNet therefore runs in fp32 by
 default; `--fp16` is opt-in for square frames on small cards.
 
-**Group cutout gradients in image space, not through the decoder.** Chunking the CLIP
-pass to save memory is necessary, but if each chunk backpropagates all the way through
-a decoder, sampling slows by the number of chunks for no change in the answer.
+**Group cutout gradients in image space, not through the decoder.** Chunking the CLIP pass
+to save memory is necessary, but if each chunk backpropagates through a decoder, sampling
+slows by the number of chunks for no change in the answer.
 
 The same guidance also runs against our own rectified-flow latent models, trained from scratch on a single GPU; that lives in a separate project, `cobanov-diffusion`, which imports this package for the cutouts, losses and CLIP bank.
 
