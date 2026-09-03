@@ -1,0 +1,9 @@
+The Python modules in this directory are copied unmodified from
+openai/guided-diffusion (https://github.com/openai/guided-diffusion), which is
+distributed under the MIT licence reproduced in LICENSE.
+
+Copied: unet.py, gaussian_diffusion.py, respace.py, nn.py, losses.py, fp16_util.py, logger.py
+Copied on: 2026-09-03
+Reason: the upstream package depends on mpi4py and blobfile, which are only used by its
+training and data-loading code. Vendoring the sampling subset keeps neodisco installable
+with pip alone.

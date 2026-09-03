@@ -14,7 +14,7 @@ from .losses import spherical_dist_loss, tv_loss, range_loss, saturation_loss
 
 class PromptGuidance:
     def __init__(self, clip_bank, cutouts, prompts, weights=None,
-                 clip_scale=1.0, tv_scale=0.0, range_scale=0.0, sat_scale=0.0,
+                 clip_scale=5000.0, tv_scale=0.0, range_scale=150.0, sat_scale=0.0,
                  clamp_max=0.0):
         self.bank = clip_bank
         self.cutouts = cutouts
@@ -56,47 +56,62 @@ class PromptGuidance:
             out = out + saturation_loss(pixels).sum() * self.sat_scale
         return out
 
-    def gradient(self, x, decode_fn, cut_batch=0):
-        """Gradient of the guidance loss with respect to the sample `x`.
+    def image_gradient(self, pixels, cut_batch=0, overview=None, inner=None,
+                       inner_grey_p=None, cutn_batches=1):
+        """d(loss) / d(pixels), accumulated over groups of cutouts.
 
-        `decode_fn` turns the model's clean-image estimate into pixels and must stay
-        differentiable, so for a latent model it runs the VAE decoder rather than the
-        no-grad helper.
-
-        The work is split in two so that a large cut count stays affordable. The cutouts
-        and CLIP are differentiated with respect to the *image*, in groups of `cut_batch`,
-        which is where the activation memory goes. Those partial image gradients are summed
-        and pushed through the decoder exactly once. Doing it the naive way runs a decoder
-        backward per group and is several times slower for the same answer.
+        The cutouts and CLIP are where the activation memory goes, so they are done in
+        groups of `cut_batch` and their gradients summed. `pixels` is treated as a leaf:
+        callers that produced it from something else push this gradient the rest of the
+        way themselves.
         """
-        with torch.enable_grad():
-            x = x.detach().requires_grad_(True)
-            pixels = decode_fn(x)
+        total = torch.zeros_like(pixels)
+        # Disco redraws the cutouts several times per step and averages the gradients.
+        # One draw is a noisy estimate of "what the prompt wants here"; averaging a few
+        # steadies it without changing what it asks for.
+        for _ in range(max(int(cutn_batches), 1)):
+            total = total + self._one_draw(pixels, cut_batch, overview, inner, inner_grey_p)
+        return total / max(int(cutn_batches), 1)
 
-            # Stage one: d(loss) / d(pixels), accumulated over cutout groups.
+    def _one_draw(self, pixels, cut_batch, overview, inner, inner_grey_p):
+        with torch.enable_grad():
             probe = pixels.detach().requires_grad_(True)
-            cuts = self.cutouts(probe)
+            cuts = self.cutouts(probe, overview=overview, inner=inner,
+                                inner_grey_p=inner_grey_p)
             n = cuts.shape[0]
             size = cut_batch if cut_batch and cut_batch < n else n
             starts = list(range(0, n, size))
-            pixel_grad = torch.zeros_like(probe)
+            grad = torch.zeros_like(probe)
 
             for k, begin in enumerate(starts):
                 chunk = cuts[begin:begin + size]
                 term = self._clip_term(chunk) * (chunk.shape[0] / n) * self.clip_scale
                 if k == len(starts) - 1:
-                    # The pixel-space terms depend on the whole image, not on any one
-                    # cutout, so they ride along with the final group.
+                    # These depend on the whole image rather than any one cutout, so they
+                    # ride along with the final group.
                     if self.tv_scale:
                         term = term + tv_loss(probe).sum() * self.tv_scale
                     if self.range_scale:
                         term = term + range_loss(probe).sum() * self.range_scale
                     if self.sat_scale:
                         term = term + saturation_loss(probe).sum() * self.sat_scale
-                pixel_grad = pixel_grad + torch.autograd.grad(
+                grad = grad + torch.autograd.grad(
                     term, probe, retain_graph=(k < len(starts) - 1))[0]
+        return grad
 
-            # Stage two: one pass back through the decoder.
+    def gradient(self, x, decode_fn, cut_batch=0, **cut_kwargs):
+        """Gradient of the guidance loss with respect to the sample `x`.
+
+        `decode_fn` turns the model's clean-image estimate into pixels and must stay
+        differentiable, so for a latent model it runs the VAE decoder rather than the
+        no-grad helper. The image-space gradient is found first, in groups, and pushed
+        back through the decoder exactly once; a decoder backward per group would be
+        several times slower for the same answer.
+        """
+        with torch.enable_grad():
+            x = x.detach().requires_grad_(True)
+            pixels = decode_fn(x)
+            pixel_grad = self.image_gradient(pixels, cut_batch=cut_batch, **cut_kwargs)
             grad = torch.autograd.grad(pixels, x, grad_outputs=pixel_grad)[0]
         return self.clamp(grad)
 

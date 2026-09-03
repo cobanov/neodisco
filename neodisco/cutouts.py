@@ -49,25 +49,32 @@ class MakeCutouts(nn.Module):
         return F.interpolate(x, size=(self.cut_size, self.cut_size), mode='bicubic',
                              align_corners=False, antialias=True)
 
-    def forward(self, image):
-        """image: (N, 3, H, W) in [-1, 1]. Returns (N * n_cuts, 3, cut, cut)."""
+    def forward(self, image, overview=None, inner=None, inner_grey_p=None):
+        """image: (N, 3, H, W) in [-1, 1]. Returns (n_cuts, 3, cut, cut).
+
+        The three counts can be overridden per call, which is how Disco's schedules work:
+        many overview cuts early for composition, many inner cuts later for detail.
+        """
+        overview = self.overview if overview is None else int(overview)
+        inner = self.inner if inner is None else int(inner)
+        inner_grey_p = self.inner_grey_p if inner_grey_p is None else inner_grey_p
         cuts = []
         side_y, side_x = image.shape[2:4]
         max_size = min(side_x, side_y)
         min_size = min(side_x, side_y, self.cut_size)
 
-        if self.overview > 0:
+        if overview > 0:
             pad_y, pad_x = (side_y - max_size) // 2, (side_x - max_size) // 2
             padded = F.pad(image, (pad_x, pad_x, pad_y, pad_y), mode=self.padding_mode)
             whole = self._resize(padded)
-            if self.overview <= 4:
+            if overview <= 4:
                 variants = [whole, self.grey(whole), TF.hflip(whole), self.grey(TF.hflip(whole))]
-                cuts.extend(variants[:self.overview])
+                cuts.extend(variants[:overview])
             else:
-                cuts.extend([whole] * self.overview)
+                cuts.extend([whole] * overview)
 
-        grey_cutoff = int(self.inner_grey_p * self.inner)
-        for i in range(self.inner):
+        grey_cutoff = int(inner_grey_p * inner)
+        for i in range(inner):
             # A power law on the crop size, so small crops (fine detail) dominate.
             size = int(torch.rand([]) ** self.inner_size_pow * (max_size - min_size) + min_size)
             off_x = int(torch.randint(0, side_x - size + 1, ()))
