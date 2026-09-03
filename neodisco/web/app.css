@@ -191,14 +191,24 @@ body::after {
   border-color: var(--glass-line-hot);
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 28%), inset 0 -1px 0 rgb(255 255 255 / 6%), 0 12px 48px rgb(0 0 0 / 60%);
 }
-.entry .caret { color: var(--faint); font-size: var(--hud); padding-bottom: 9px; }
+/* Isaret ve metin kendi satirinda: boylece isaret metnin ILK satiriyla hizalaniyor.
+   Onceden ikisi de dogrudan .entry'nin cocuguydu ve .entry alt hizali oldugu icin,
+   metin cok satira cikinca isaret son satirin yanina dusuyordu. Tek satirda da 4 piksel
+   asagidaydi, cunku satir yuksekligini metin degil ondan uzun olan dugmeler belirliyordu.
+   Isaretin punto, satir yuksekligi ve ust boslugu metninkiyle birebir ayni, yani ayni
+   satir kutusuna oturuyorlar. */
+.field { flex: 1; min-width: 0; display: flex; align-items: flex-start; gap: 8px; }
+.entry .caret {
+  flex: none; color: var(--faint);
+  font-size: 0.9375rem; line-height: 1.5; padding: 4px 0;
+}
 #prompt {
-  flex: 1; background: none; border: 0; color: var(--ink);
+  flex: 1; min-width: 0; background: none; border: 0; color: var(--ink);
   font-family: inherit; font-size: 0.9375rem; line-height: 1.5;
   padding: 4px 0; resize: none; height: 26px; max-height: 132px; overflow-y: auto;
 }
 .icon-btn {
-  flex: none; display: grid; place-items: center; width: 34px; height: 34px;
+  flex: none; display: grid; place-items: center; width: 31px; height: 31px;
   background: rgb(255 255 255 / 6%); border: 1px solid var(--glass-line);
   border-radius: 50%; color: var(--dim); cursor: pointer; padding: 0;
   transition: color 0.15s var(--ease), background 0.15s var(--ease);
@@ -212,7 +222,7 @@ body::after {
 #go {
   flex: none; font: inherit; font-size: var(--hud); letter-spacing: 0.12em; text-transform: uppercase;
   background: rgb(255 255 255 / 9%); border: 1px solid var(--glass-line); color: var(--ink);
-  padding: 9px 18px; border-radius: 20px; cursor: pointer; white-space: nowrap;
+  padding: 0 18px; height: 31px; border-radius: 16px; cursor: pointer; white-space: nowrap;
   transition: background 0.15s var(--ease), border-color 0.15s var(--ease), color 0.15s var(--ease);
 }
 #go:hover:not(:disabled) { background: rgb(255 255 255 / 16%); border-color: var(--glass-line-hot); }
