@@ -116,6 +116,18 @@ Weight several prompts against each other with `::`:
 python -m neodisco.cli "an ukiyo-e woodblock print::1.0" "neon::0.4" --image-size 256
 ```
 
+### Web UI
+
+```bash
+pip install -e ".[webui]"
+python -m neodisco.webui --weights weights/disco
+```
+
+Opens a page on `http://127.0.0.1:7860` with every setting above, Disco's defaults filled
+in, and a slot for an old settings `.json`. The settings actually used come back as JSON
+next to the image, so a result you like can be re-run or shared as a file. Pass `--host
+0.0.0.0` to reach it from another machine on your network.
+
 ### The knobs that change the look
 
 | Flag | Does |

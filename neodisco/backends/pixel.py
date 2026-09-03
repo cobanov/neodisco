@@ -126,7 +126,10 @@ class PixelBackend:
         """
         # Disco respaces as 'ddim<N>' (every 1000//N-th timestep from 0), which is not the
         # same set of timesteps as the plain '<N>' spacing.
-        diffusion = build_diffusion(f'ddim{steps}')
+        # 'ddim<N>' needs N to divide 1000 (250, 200, 125, 100, 50...). For any other
+        # count fall back to the plain even spacing rather than refusing to run.
+        spacing = f'ddim{steps}' if 1000 % int(steps) == 0 else str(steps)
+        diffusion = build_diffusion(spacing)
         g = torch.Generator(device='cpu').manual_seed(seed)
         h = height or self.image_size
         w = width or self.image_size

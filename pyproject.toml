@@ -13,6 +13,9 @@ dependencies = [
     "tqdm",
 ]
 
+[project.optional-dependencies]
+webui = ["gradio>=4.0"]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
