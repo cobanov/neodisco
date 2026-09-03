@@ -40,11 +40,22 @@ class Job:
     error: str = ''
     position: int = 0
     seed: int = 0
+    width: int = 0
+    height: int = 0
+    first_step: float = 0.0        # ilk adimin saati, kalan sure buradan olculuyor
+    preview: int = 0               # son yazilan onizlemenin adimi, 0 ise henuz yok
 
     def public(self):
         d = asdict(self)
         d.pop('settings')
         d['elapsed'] = (self.finished or time.time()) - self.started if self.started else 0
+        # Kalan sure adim hizindan. Isin baslangicindan olcmek yaniltiyordu: ilk kosuda
+        # agirliklarin yuklenmesi yirmi saniye suruyor ve o sure adim maliyetiymis gibi
+        # sayilip tahmini iki katina cikariyordu. Saat ilk adimda baslatiliyor.
+        d['eta'] = 0.0
+        if self.state == 'running' and self.step > 1 and self.total and self.first_step:
+            pace = (time.time() - self.first_step) / (self.step - 1)
+            d['eta'] = max(0.0, pace * (self.total - self.step))
         return d
 
 
@@ -61,10 +72,38 @@ class Runner:
         self.lock = threading.Lock()
         self._backends: dict[tuple, PixelBackend] = {}
         self._banks: dict[tuple, ClipBank] = {}
+        self._restore()
         threading.Thread(target=self._loop, daemon=True).start()
 
+    def _restore(self):
+        """Rebuild finished jobs from disk.
+
+        The queue used to live only in memory, so a restart wiped every result the
+        browser knew about: the page opened empty even though the PNGs were still
+        sitting in the output directory. The settings written next to each render
+        carry everything the listing needs.
+        """
+        found = []
+        for meta in self.out_dir.glob('*.json'):
+            png = meta.with_suffix('.png')
+            if not png.exists():
+                continue
+            try:
+                cfg = json.loads(meta.read_text(encoding='utf-8'))
+            except Exception:
+                continue
+            found.append((png.stat().st_mtime, meta.stem, cfg))
+        for mtime, job_id, cfg in sorted(found):
+            job = Job(id=job_id, settings=cfg, state='done',
+                      total=int(cfg.get('steps', 0)), step=int(cfg.get('steps', 0)),
+                      started=mtime, finished=mtime, seed=int(cfg.get('seed', 0)),
+                      width=int(cfg.get('width', 0)), height=int(cfg.get('height', 0)))
+            self.jobs[job_id] = job
+            self.order.append(job_id)
+
     def submit(self, settings):
-        job = Job(id=uuid.uuid4().hex[:12], settings=settings, total=int(settings['steps']))
+        job = Job(id=uuid.uuid4().hex[:12], settings=settings, total=int(settings['steps']),
+                  width=int(settings['width']), height=int(settings['height']))
         with self.lock:
             self.jobs[job.id] = job
             self.order.append(job.id)
@@ -124,6 +163,28 @@ class Runner:
         backend = self._backend(int(s['image_size']), bool(s.get('fp16')))
         seed = int(s['seed']) if int(s['seed']) >= 0 else int(torch.randint(0, 2 ** 31, ()))
         job.seed = seed
+        # Atlanan adimlar hic kosulmuyor; sayaci gercek yineleme sayisina kuruyoruz,
+        # yoksa bar 240/250'de "bitti" diyor.
+        job.total = max(1, int(s['steps']) - int(s['skip_steps']))
+
+        preview_path = self.out_dir / f'{job.id}_p.jpg'
+        last = [0.0]
+
+        def write_preview(n, pred):
+            # Saniyede birden sik yazmanin anlami yok: tarayici zaten periyodik yokluyor
+            # ve JPEG kodlamasi GPU adimindan calmasin.
+            now = time.time()
+            if now - last[0] < 2.5 and n != job.total:
+                return
+            last[0] = now
+            try:
+                arr = backend.to_uint8(pred.clamp(-1, 1))[0]
+                tmp = preview_path.with_suffix('.tmp.jpg')
+                Image.fromarray(arr).save(tmp, quality=82)
+                os.replace(tmp, preview_path)
+                job.preview = n
+            except Exception:
+                pass       # onizleme kozmetik, uretimi asla dusurmesin
 
         class Ticker:
             """Stands in for tqdm so the queue can report progress to the browser."""
@@ -133,6 +194,8 @@ class Runner:
 
             def __iter__(self):
                 for n, v in enumerate(self.it, start=1):
+                    if n == 1:
+                        job.first_step = time.time()
                     job.step = n
                     yield v
 
@@ -143,7 +206,8 @@ class Runner:
             cut_innercut=s['cut_innercut'] or None, cut_icgray_p=s['cut_icgray_p'] or None,
             cutn_batches=int(s['cutn_batches']), cut_batch=64,
             use_secondary=bool(s['use_secondary']), init_image=s.get('init_image') or None,
-            init_scale=float(s.get('init_scale') or 0), progress=Ticker)
+            init_scale=float(s.get('init_scale') or 0), progress=Ticker,
+            preview=write_preview)
         Image.fromarray(backend.to_uint8(pixels)[0]).save(self.out_dir / f'{job.id}.png')
         out = dict(s, seed=seed)
         out.pop('init_image', None)
@@ -204,6 +268,28 @@ def build_app(runner, uploads):
         path = uploads / name
         path.write_bytes(await file.read())
         return {'path': str(path)}
+
+    @app.get('/api/preview/{job_id}.jpg')
+    async def preview(job_id: str):
+        path = runner.out_dir / f'{job_id}_p.jpg'
+        if not path.exists():
+            raise HTTPException(404, 'no preview yet')
+        return FileResponse(path, media_type='image/jpeg',
+                            headers={'Cache-Control': 'no-store'})
+
+    @app.get('/api/thumb/{job_id}.jpg')
+    async def thumb(job_id: str):
+        src = runner.out_dir / f'{job_id}.png'
+        if not src.exists():
+            raise HTTPException(404, 'not ready')
+        dst = runner.out_dir / f'{job_id}_t.jpg'
+        # Tam boy PNG'yi seride basmak birkac megabayt bosa trafik; kucugu bir kere
+        # uretip yaninda tutuyoruz.
+        if not dst.exists() or dst.stat().st_mtime < src.stat().st_mtime:
+            im = Image.open(src).convert('RGB')
+            im.thumbnail((320, 320), Image.LANCZOS)
+            im.save(dst, quality=80)
+        return FileResponse(dst, media_type='image/jpeg')
 
     @app.get('/api/jobs')
     async def jobs():

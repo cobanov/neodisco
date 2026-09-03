@@ -143,7 +143,8 @@ class PixelBackend:
                guidance_strength=1.0, cut_batch=0, eta=0.0, width=None, height=None,
                cut_overview=None, cut_innercut=None, cut_icgray_p=None, cutn_batches=1,
                clip_denoised=False, skip_steps=0, through_model=True, disco_blend=True,
-               use_secondary=True, init_image=None, init_scale=0.0, progress=True):
+               use_secondary=True, init_image=None, init_scale=0.0, progress=True,
+               preview=None):
         """Sample an image.
 
         `width` and `height` may differ from the checkpoint's nominal size: the UNet is
@@ -248,13 +249,18 @@ class PixelBackend:
         else:
             iterator = indices
 
-        for i in iterator:
+        # pred_xstart is the model's guess at the finished image from where it currently
+        # stands, which is what Disco showed while a render was running: recognisable
+        # early, sharp late. It costs nothing here, the step already computed it.
+        for n, i in enumerate(iterator, start=1):
             t = torch.tensor([i] * batch_size, device=self.device)
             with torch.no_grad(), self._autocast():
                 out = diffusion.ddim_sample(self.model, x, t, clip_denoised=clip_denoised,
                                             cond_fn=make_cond_fn(i) if guidance is not None else None,
                                             eta=eta, model_kwargs={})
             x = out['sample'].float()
+            if preview is not None:
+                preview(n, out['pred_xstart'].float())
 
         return x
 

@@ -43,13 +43,17 @@
 <div class="hud hud-bl" id="meta">
   <span><span class="key">DIM</span> <span class="val" id="m-dim">1280&times;768</span></span>
   <span><span class="key">STEP</span> <span class="val" id="m-step">250</span></span>
-  <span><span class="key">SEED</span> <span class="val" id="m-seed">—</span></span>
-  <span><span class="key">TIME</span> <span class="val" id="m-time">—</span></span>
+  <span><span class="key">SEED</span> <span class="val" id="m-seed">-</span></span>
+  <span><span class="key">TIME</span> <span class="val" id="m-time">-</span>
+  <span><span class="key">LEFT</span> <span class="val" id="m-eta">-</span></span></span>
 </div>
+
+<aside class="rail" id="rail" aria-label="Recent renders" hidden></aside>
 
 <main class="stage" id="stage">
   <div class="frame" id="frame">
     <i aria-hidden="true"></i>
+    <img id="peek" alt="" aria-hidden="true">
     <div class="ghost" id="ghost">
       <span class="dim">
         <em id="ghost-dim">1280 &times; 768</em>

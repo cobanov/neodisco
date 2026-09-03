@@ -73,7 +73,7 @@ ratios.addEventListener('click', (e) => {
   setGhost();
   // Bir goruntu duruyorsa onu birakip cerceveye donmek yerine goruntu kalir; yeni oran
   // bir sonraki uretimde devreye girer.
-  if (!$('frame').querySelector('img')) ghost.hidden = false;
+  if (!$('frame').querySelector('img:not(#peek)')) ghost.hidden = false;
 });
 
 $('dice').addEventListener('click', () => {
@@ -101,6 +101,34 @@ const showError = (msg) => {
 
 let polling = null;
 
+// Kalan sureyi dakika:saniye olarak yaz, 60 saniyenin altinda saniye olarak.
+const fmtLeft = (sec) => {
+  const n = Math.max(0, Math.round(sec));
+  return n >= 60 ? `${Math.floor(n / 60)}:${String(n % 60).padStart(2, '0')}` : `${n}s`;
+};
+
+// Bulaniklik ilerlemeyle birlikte cozuluyor. Ustel egri, ilk karelerde yuksek tutup
+// sona dogru hizla siniri geciyor: erken adimlarda zaten okunacak bir sey yok.
+const peekBlur = (p) => 30 * Math.pow(1 - Math.min(Math.max(p, 0), 1), 1.7);
+
+const setPeek = (id, n, p) => {
+  const peek = $('peek');
+  const img = new Image();
+  img.onload = () => {
+    peek.src = img.src;
+    peek.style.filter = `blur(${peekBlur(p).toFixed(1)}px)`;
+    peek.classList.add('on');
+    ghost.hidden = true;
+  };
+  img.src = `/api/preview/${id}.jpg?n=${n}`;
+};
+
+const clearPeek = () => {
+  const peek = $('peek');
+  peek.classList.remove('on');
+  peek.removeAttribute('src');
+};
+
 function reveal(id, job) {
   const frame = $('frame');
   const img = new Image();
@@ -108,18 +136,62 @@ function reveal(id, job) {
   img.addEventListener('load', () => {
     ghost.hidden = true;
     ghost.classList.remove('busy');
-    const old = frame.querySelector('img');
+    clearPeek();
+    // #peek de bir img: onizleme katmanini silmemek icin disarida birakiliyor.
+    const old = frame.querySelector('img:not(#peek)');
     if (old) old.remove();
     frame.appendChild(img);
     requestAnimationFrame(() => { img.classList.add('in'); frame.classList.add('marked'); });
   });
   img.src = `/api/result/${id}.png?t=${Date.now()}`;
-  $('m-seed').textContent = job.seed;
-  $('m-time').textContent = `${Math.round(job.elapsed)}s`;
+  $('m-seed').textContent = job.seed || '-';
+  $('m-time').textContent = job.elapsed > 0 ? `${Math.round(job.elapsed)}s` : '-';
+}
+
+// Onceki uretimler soldaki seritte. Sunucu gecmisi diskten kuruyor, yani yeniden
+// baslatma bunlari silmiyor.
+const RAIL_MAX = 24;
+
+function pick(job, button) {
+  size = { w: job.width, h: job.height };
+  [...ratios.children].forEach((x) => x.setAttribute('aria-pressed',
+    String(Number(x.dataset.w) === job.width && Number(x.dataset.h) === job.height)));
+  setGhost();
+  clearPeek();
+  reveal(job.id, job);
+  $('state').textContent = t('done', 'bitti');
+  [...$('rail').children].forEach((b) => b.classList.remove('on'));
+  if (button) button.classList.add('on');
+}
+
+async function loadRail(activeId) {
+  const jobs = await fetch('/api/jobs').then((r) => r.json()).catch(() => null);
+  if (!jobs) return [];
+  const done = jobs.filter((j) => j.state === 'done' && j.width && j.height).slice(0, RAIL_MAX);
+  const rail = $('rail');
+  rail.textContent = '';
+  document.documentElement.style.setProperty('--rail-w', done.length ? '104px' : '0px');
+  rail.hidden = done.length === 0;
+  for (const j of done) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.title = `${j.width}\u00d7${j.height}`;
+    if (j.id === activeId) b.classList.add('on');
+    const im = new Image();
+    im.src = `/api/thumb/${j.id}.jpg`;
+    im.alt = '';
+    im.loading = 'lazy';
+    b.appendChild(im);
+    b.addEventListener('click', () => pick(j, b));
+    rail.appendChild(b);
+  }
+  setGhost();
+  return done;
 }
 
 function watch(id) {
   clearInterval(polling);
+  let seenPreview = 0;
   polling = setInterval(async () => {
     // Ag hatasi gecicidir, yoklamaya devam edilir. 404 kalicidir: sunucu yeniden
     // baslamis ya da is gecmisten dusmustur, o kimlik bir daha donmez. Ayirmazsak
@@ -131,6 +203,8 @@ function watch(id) {
       clearInterval(polling);
       $('state').textContent = t('lost', 'kayıp');
       $('bar').style.width = '0';
+      $('m-eta').textContent = '-';
+      clearPeek();
       showError(t('That job is gone, the server restarted. Generate again.',
                   'O iş kayboldu, sunucu yeniden başlamış. Yeniden üret.'));
       ghost.classList.remove('busy');
@@ -143,23 +217,42 @@ function watch(id) {
     if (!j || !j.state) return;
     if (j.state === 'queued') {
       $('state').textContent = t(`queued ${j.position}`, `sırada ${j.position}`);
+      $('ghost-note').textContent = t(`queued ${j.position}`, `sırada ${j.position}`);
     } else if (j.state === 'running') {
-      $('state').textContent = t('rendering', 'üretiliyor');
-      $('bar').style.width = (j.total ? (j.step / j.total) * 100 : 0) + '%';
+      const p = j.total ? j.step / j.total : 0;
+      $('state').textContent = t(`rendering ${Math.round(p * 100)}%`,
+                                 `üretiliyor %${Math.round(p * 100)}`);
+      $('bar').style.width = p * 100 + '%';
       $('m-step').textContent = `${j.step}/${j.total}`;
       $('m-time').textContent = `${Math.round(j.elapsed)}s`;
+      $('m-eta').textContent = j.eta > 0 ? fmtLeft(j.eta) : '-';
+      // Tohum uretim baslar baslamaz belli; bekletirsek HUD bir onceki isi gosteriyor.
+      $('m-seed').textContent = j.seed || '-';
+      $('ghost-note').textContent = j.eta > 0
+        ? t(`about ${fmtLeft(j.eta)} left`, `yaklaşık ${fmtLeft(j.eta)} kaldı`)
+        : t('starting', 'başlıyor');
+      if (j.preview && j.preview !== seenPreview) {
+        seenPreview = j.preview;
+        setPeek(id, j.preview, p);
+      } else if ($('peek').classList.contains('on')) {
+        $('peek').style.filter = `blur(${peekBlur(p).toFixed(1)}px)`;
+      }
     } else if (j.state === 'done') {
       clearInterval(polling);
       $('state').textContent = t('done', 'bitti');
       $('bar').style.width = '100%';
+      $('m-eta').textContent = '-';
       $('m-step').textContent = j.total;
       reveal(j.id, j);
+      loadRail(j.id);
       $('go').disabled = false;
       setTimeout(() => { $('bar').style.width = '0'; }, 900);
     } else if (j.state === 'error') {
       clearInterval(polling);
       $('state').textContent = t('error', 'hata');
       $('bar').style.width = '0';
+      $('m-eta').textContent = '-';
+      clearPeek();
       showError(j.error);
       ghost.classList.remove('busy');
       $('go').disabled = false;
@@ -175,8 +268,9 @@ $('form').addEventListener('submit', async (e) => {
   $('state').textContent = t('sending', 'gönderiliyor');
   $('bar').style.width = '0';
   // Uretim boyunca secilen oranin bos cercevesi durur, goruntu onun icine acilir.
-  const stale = $('frame').querySelector('img');
+  const stale = $('frame').querySelector('img:not(#peek)');
   if (stale) stale.remove();
+  clearPeek();
   $('frame').classList.remove('marked');
   setGhost();
   ghost.hidden = false;
@@ -202,7 +296,8 @@ $('form').addEventListener('submit', async (e) => {
 });
 
 // Son biten işi ekrana koy, sayfa boş açılmasın.
-fetch('/api/jobs').then((r) => r.json()).then((jobs) => {
-  const last = (jobs || []).find((j) => j.state === 'done');
-  if (last) { reveal(last.id, last); $('state').textContent = t('done', 'bitti'); }
-}).catch(() => {});
+loadRail().then((done) => {
+  const last = done[0];
+  if (!last) return;
+  pick(last, $('rail').firstElementChild);
+});
