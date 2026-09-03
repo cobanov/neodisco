@@ -62,8 +62,8 @@ class ClipBank(nn.Module):
         return out, torch.tensor(weights, device=self.device, dtype=torch.float32)
 
     def encode_cutouts(self, cutouts, model_idx):
-        """cutouts in [-1, 1]; normalises and resizes for the given model."""
-        x = (cutouts + 1) / 2
+        """cutouts in [0, 1]; normalises and resizes for the given model."""
+        x = cutouts
         size = self.sizes[model_idx]
         if x.shape[-1] != size:
             x = F.interpolate(x, size=(size, size), mode='bicubic',

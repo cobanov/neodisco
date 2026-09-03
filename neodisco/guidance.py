@@ -33,7 +33,8 @@ class PromptGuidance:
             # (cuts, 1, d) against (1, prompts, d) -> (cuts, prompts)
             dists = spherical_dist_loss(emb.unsqueeze(1), self.embeddings[i].unsqueeze(0))
             total = total + (dists * self.weights).sum(dim=1).mean()
-        return total / max(len(self.bank.models), 1)
+        # Disco sums over CLIP models rather than averaging; more models pull harder.
+        return total
 
     def loss(self, pixels):
         """pixels: (N, 3, H, W) in [-1, 1], part of a live autograd graph."""

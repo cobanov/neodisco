@@ -23,7 +23,7 @@ class MakeCutouts(nn.Module):
     """Port of Disco Diffusion's MakeCutoutsDango, on modern torchvision."""
 
     def __init__(self, cut_size, overview=4, inner=32, inner_size_pow=0.5,
-                 inner_grey_p=0.2, augment=True, padding_mode='reflect'):
+                 inner_grey_p=0.2, augment=True, padding_mode='constant'):
         super().__init__()
         self.cut_size = cut_size
         self.overview = overview
@@ -50,7 +50,11 @@ class MakeCutouts(nn.Module):
                              align_corners=False, antialias=True)
 
     def forward(self, image, overview=None, inner=None, inner_grey_p=None):
-        """image: (N, 3, H, W) in [-1, 1]. Returns (n_cuts, 3, cut, cut).
+        """image: (N, 3, H, W) in [-1, 1]. Returns (n_cuts, 3, cut, cut) in [0, 1].
+
+        Cutting and augmenting happen on the [0, 1] image, as in Disco. ColorJitter and
+        the small additive noise assume that range; run them on [-1, 1] data and the
+        colour augmentations misbehave, which shifts the whole run's palette.
 
         The three counts can be overridden per call, which is how Disco's schedules work:
         many overview cuts early for composition, many inner cuts later for detail.
@@ -58,6 +62,7 @@ class MakeCutouts(nn.Module):
         overview = self.overview if overview is None else int(overview)
         inner = self.inner if inner is None else int(inner)
         inner_grey_p = self.inner_grey_p if inner_grey_p is None else inner_grey_p
+        image = image.add(1).div(2)
         cuts = []
         side_y, side_x = image.shape[2:4]
         max_size = min(side_x, side_y)

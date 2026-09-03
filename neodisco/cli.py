@@ -56,6 +56,9 @@ def main():
     ap.add_argument('--no-augment', action='store_true')
     ap.add_argument('--clip-models', help='comma list, e.g. "ViT-B-32-quickgelu:openai,RN50-quickgelu:openai"')
     ap.add_argument('--clip-denoised', action='store_true')
+    ap.add_argument('--secondary', help='path to secondary_model_imagenet_2.pth (default weights/disco/)')
+    ap.add_argument('--no-secondary', action='store_true',
+                    help='take the CLIP gradient through the UNet instead of the secondary model')
     ap.add_argument('--fp32', action='store_true')
     ap.add_argument('--grad-checkpoint', action='store_true')
     args = ap.parse_args()
@@ -65,7 +68,7 @@ def main():
                     height=None, steps=250, skip_steps=0, eta=0.8, seed=0, clip_scale=5000.0,
                     tv_scale=0.0, range_scale=150.0, sat_scale=0.0, clamp_max=0.05,
                     cutn_batches=1, cut_overview=4, cut_innercut=16, cut_icgray_p=0.2,
-                    inner_size_pow=0.5, clip_denoised=False)
+                    inner_size_pow=0.5, clip_denoised=False, use_secondary=True)
     if args.disco_config:
         settings.update(disco_config.load(args.disco_config))
     for key in ('image_size', 'width', 'height', 'steps', 'skip_steps', 'eta', 'seed',
@@ -96,15 +99,21 @@ def main():
 
     from .backends.pixel import PixelBackend
     ckpt = args.ckpt or PixelBackend.default_path(settings['image_size'])
+    secondary = args.secondary or PixelBackend.default_secondary_path()
     backend = PixelBackend(ckpt, image_size=settings['image_size'], device=device,
-                           fp16=not args.fp32, use_checkpoint=args.grad_checkpoint)
+                           fp16=not args.fp32, use_checkpoint=args.grad_checkpoint,
+                           secondary_path=None if args.no_secondary else secondary)
+    if backend.secondary is None and not args.no_secondary:
+        print('secondary model not found; taking the gradient through the UNet instead '
+              f'(expected at {secondary})')
     pixels = backend.sample(
         guidance=guidance, batch_size=args.batch_size, steps=settings['steps'],
         seed=settings['seed'], guidance_strength=args.strength, cut_batch=args.cut_batch,
         eta=settings['eta'], width=settings['width'], height=settings['height'],
         cut_overview=settings['cut_overview'], cut_innercut=settings['cut_innercut'],
         cut_icgray_p=settings['cut_icgray_p'], cutn_batches=settings['cutn_batches'],
-        clip_denoised=settings['clip_denoised'], skip_steps=settings['skip_steps'])
+        clip_denoised=settings['clip_denoised'], skip_steps=settings['skip_steps'],
+        use_secondary=settings['use_secondary'] and not args.no_secondary)
     images = backend.to_uint8(pixels)
 
     os.makedirs(os.path.dirname(args.out) or '.', exist_ok=True)

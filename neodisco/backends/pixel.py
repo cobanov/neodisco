@@ -27,6 +27,7 @@ from ..schedules import parse_schedule
 from ._guided_diffusion.respace import SpacedDiffusion, space_timesteps
 from ._guided_diffusion import gaussian_diffusion as gd
 from ._guided_diffusion.unet import UNetModel
+from .secondary import SecondaryDiffusionImageNet2, alpha_sigma_to_t
 
 # Exactly the settings the released checkpoints were trained with. Getting one of these
 # wrong loads silently and produces noise, so they are spelled out rather than derived.
@@ -63,7 +64,7 @@ class PixelBackend:
     name = 'pixel'
 
     def __init__(self, ckpt_path, image_size=512, device='cuda', fp16=True,
-                 use_checkpoint=False):
+                 use_checkpoint=False, secondary_path=None):
         if image_size not in MODEL_CONFIGS:
             raise ValueError(f'image_size must be 256 or 512, got {image_size}')
         self.device = device
@@ -75,10 +76,25 @@ class PixelBackend:
             num_heads_upsample=-1, use_new_attention_order=False, **cfg)
         state = torch.load(ckpt_path, map_location='cpu')
         self.model.load_state_dict(state)
-        self.model.to(device).eval().requires_grad_(False)
+        # Parameters are left requiring grad on purpose. guided-diffusion's own
+        # gradient checkpointing differentiates with respect to the block parameters as
+        # well as the activations, and raises if they are frozen. Nothing here ever
+        # accumulates into .grad, so the only cost is transient memory during backward.
+        self.model.to(device).eval()
         if fp16:
             self.model.convert_to_fp16()
         self.fp16 = fp16
+        # Disco's default guidance path: a small secondary model predicts the clean image
+        # and the CLIP gradient is taken through it rather than through the UNet.
+        self.secondary = None
+        if secondary_path and os.path.exists(secondary_path):
+            self.secondary = SecondaryDiffusionImageNet2()
+            self.secondary.load_state_dict(torch.load(secondary_path, map_location='cpu'))
+            self.secondary.to(device).eval().requires_grad_(False)
+
+    @staticmethod
+    def default_secondary_path(root='weights/disco'):
+        return os.path.join(root, 'secondary_model_imagenet_2.pth')
 
     @staticmethod
     def default_path(image_size, root='weights/disco'):
@@ -95,7 +111,8 @@ class PixelBackend:
     def sample(self, guidance=None, batch_size=1, steps=250, seed=0,
                guidance_strength=1.0, cut_batch=0, eta=0.0, width=None, height=None,
                cut_overview=None, cut_innercut=None, cut_icgray_p=None, cutn_batches=1,
-               clip_denoised=False, skip_steps=0, progress=True):
+               clip_denoised=False, skip_steps=0, through_model=True, disco_blend=True,
+               use_secondary=True, progress=True):
         """Sample an image.
 
         `width` and `height` may differ from the checkpoint's nominal size: the UNet is
@@ -107,7 +124,9 @@ class PixelBackend:
         Disco's usual 0.8 sits near the noisy end, which keeps injecting variety for the
         guidance to work against.
         """
-        diffusion = build_diffusion(str(steps))
+        # Disco respaces as 'ddim<N>' (every 1000//N-th timestep from 0), which is not the
+        # same set of timesteps as the plain '<N>' spacing.
+        diffusion = build_diffusion(f'ddim{steps}')
         g = torch.Generator(device='cpu').manual_seed(seed)
         h = height or self.image_size
         w = width or self.image_size
@@ -134,32 +153,80 @@ class PixelBackend:
             k = n_steps - 1 - i
 
             if guidance is not None:
-                # CLIP looks at the model's estimate of the finished image. With the noise
-                # prediction held fixed, that estimate is x scaled by 1/sqrt(alpha_bar),
-                # so the gradient with respect to x is the image gradient over that same
-                # factor. Reconstructing the noise term explicitly is the obvious way to
-                # write this and it is unstable: near the end of sampling sqrt(1 - a_bar)
-                # goes to zero and the division blows up to NaN.
-                alpha_bar = float(alphas[i])
-                pixel_grad = guidance.image_gradient(
-                    out['pred_xstart'], cut_batch=cut_batch,
-                    overview=overview_at[k] if overview_at else None,
-                    inner=inner_at[k] if inner_at else None,
-                    inner_grey_p=grey_at[k] if grey_at else None,
-                    cutn_batches=cutn_batches)
-                grad = guidance.clamp(pixel_grad / max(alpha_bar, 1e-8) ** 0.5)
-                # The gradient is normalised, then scaled by the step's own noise level,
-                # so `guidance_strength` means the same thing at every step and for
-                # either sampler.
-                grad_rms = grad.square().mean().sqrt().clamp(min=1e-12)
-                step_scale = guidance_strength * out['variance'].mean() / grad_rms
-                shifted = out['pred_xstart'] - grad * step_scale / max(alpha_bar, 1e-8) ** 0.5
-                out['pred_xstart'] = shifted
-                out['mean'] = out['mean'] - grad * step_scale
+                # This follows Disco's cond_fn. Three details matter for the look and are
+                # easy to get wrong:
+                #
+                # 1. CLIP is shown a blend, x_in = x0_hat * s + x * (1 - s) with
+                #    s = sqrt(1 - alpha_bar), not the clean estimate alone. Early on that
+                #    is the estimate; late in the run it is mostly the sample itself.
+                # 2. The gradient goes back through the UNet (Disco used a small
+                #    "secondary" model as a cheap stand-in; here the real one is used).
+                # 3. The gradient is clamped to an RMS of clamp_max, and that clamped
+                #    value is what the sampler scales by the step's noise level. Rescaling
+                #    it to any other magnitude blows the colours out within a few dozen
+                #    steps; the first version of this file did exactly that.
+                ab = float(alphas[i])
+                s_t = (1 - ab) ** 0.5
+                if self.secondary is not None and use_secondary:
+                    # x_in = secondary.pred * s + x * (1 - s), gradient through the
+                    # secondary model. This is Disco's cond_fn with use_secondary_model on.
+                    with torch.enable_grad():
+                        x_g = x.detach().requires_grad_(True)
+                        alpha = torch.tensor(ab ** 0.5, device=self.device)
+                        sigma = torch.tensor(s_t, device=self.device)
+                        cosine_t = alpha_sigma_to_t(alpha, sigma)
+                        pred = self.secondary(x_g, cosine_t[None].repeat(x_g.shape[0])).pred
+                        x_in = pred * s_t + x_g * (1 - s_t)
+                        pixel_grad = guidance.image_gradient(
+                            x_in, cut_batch=cut_batch,
+                            overview=overview_at[k] if overview_at else None,
+                            inner=inner_at[k] if inner_at else None,
+                            inner_grey_p=grey_at[k] if grey_at else None,
+                            cutn_batches=cutn_batches)
+                        grad = torch.autograd.grad(x_in, x_g, grad_outputs=pixel_grad)[0]
+                elif through_model:
+                    with torch.enable_grad():
+                        x_g = x.detach().requires_grad_(True)
+                        out_g = diffusion.p_mean_variance(self.model, x_g, t,
+                                                          clip_denoised=clip_denoised)
+                        x_in = (out_g['pred_xstart'] * s_t + x_g * (1 - s_t)
+                                if disco_blend else out_g['pred_xstart'])
+                        pixel_grad = guidance.image_gradient(
+                            x_in, cut_batch=cut_batch,
+                            overview=overview_at[k] if overview_at else None,
+                            inner=inner_at[k] if inner_at else None,
+                            inner_grey_p=grey_at[k] if grey_at else None,
+                            cutn_batches=cutn_batches)
+                        grad = torch.autograd.grad(x_in, x_g, grad_outputs=pixel_grad)[0]
+                else:
+                    x_in = (out['pred_xstart'] * s_t + x * (1 - s_t)
+                            if disco_blend else out['pred_xstart'])
+                    pixel_grad = guidance.image_gradient(
+                        x_in, cut_batch=cut_batch,
+                        overview=overview_at[k] if overview_at else None,
+                        inner=inner_at[k] if inner_at else None,
+                        inner_grey_p=grey_at[k] if grey_at else None,
+                        cutn_batches=cutn_batches)
+                    # Jacobian of x_in with the noise prediction held fixed.
+                    grad = pixel_grad * ((1 - s_t) + s_t / max(ab, 1e-3) ** 0.5)
+
+                if guidance.clamp_max:
+                    cond = -guidance.clamp(grad)
+                else:
+                    # No clamp: fall back to a step-relative scale.
+                    grad_rms = grad.square().mean().sqrt().clamp(min=1e-12)
+                    cond = -grad * (guidance_strength * out['variance'].mean() / grad_rms)
+
+                if eta < 1:
+                    # guided-diffusion's condition_score: guidance enters through eps.
+                    eps = (x - ab ** 0.5 * out['pred_xstart']) / (1 - ab) ** 0.5
+                    eps = eps - (1 - ab) ** 0.5 * cond
+                    out['pred_xstart'] = (x - (1 - ab) ** 0.5 * eps) / ab ** 0.5
+                else:
+                    # condition_mean: guidance moves the posterior mean.
+                    out['mean'] = out['mean'] + out['variance'] * cond
 
             if not torch.isfinite(out['pred_xstart']).all():
-                # fp16 attention over a large frame can overflow on some seeds. Fail here
-                # with a useful message rather than silently writing a blank image.
                 raise FloatingPointError(
                     f'non-finite values at step {k}; rerun with fp16=False (--fp32) '
                     'or a smaller frame')

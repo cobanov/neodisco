@@ -48,12 +48,22 @@ Both are unconditional ImageNet diffusion models, and both are still up:
 |---|---|---|
 | `256x256_diffusion_uncond.pt` | OpenAI, July 2021 | 2.21 GB |
 | `512x512_diffusion_uncond_finetune_008100.pt` | Katherine Crowson's finetune, the one Disco used by default | 2.23 GB |
+| `secondary_model_imagenet_2.pth` | Crowson's secondary model; Disco took the CLIP gradient through this by default | 53 MB |
 
 ```bash
 mkdir -p weights/disco && cd weights/disco
 curl -LO https://openaipublic.blob.core.windows.net/diffusion/jul-2021/256x256_diffusion_uncond.pt
 curl -LO https://huggingface.co/lowlevelware/512x512_diffusion_unconditional_ImageNet/resolve/main/512x512_diffusion_uncond_finetune_008100.pt
+curl -LO https://huggingface.co/spaces/huggi/secondary_model_imagenet_2.pth/resolve/main/secondary_model_imagenet_2.pth
 ```
+
+The secondary model matters more than its size suggests. Disco's `use_secondary_model` was
+on by default, and it changes the *direction* of guidance, not just its cost: the CLIP
+gradient is taken through a 14M-parameter network that predicts the clean image, rather
+than through the 550M-parameter UNet, and the result is the softer, more painterly steer
+people remember. On the same settings file, CLIP distance to the prompt after 250 steps
+drops from 6.10 (unguided) to 5.25 with the secondary model, against 5.77 through the
+UNet. Pass `--no-secondary` to use the UNet path.
 
 ## Install
 
@@ -154,6 +164,13 @@ sampler.
 `eps = (x - sqrt(a) * x0) / sqrt(1 - a)` and then differentiating through it is the
 obvious formulation and it divides by zero at the end of sampling. Take the gradient
 with respect to the estimate directly and divide by `sqrt(alpha_bar)` instead.
+
+**Cut and augment in [0, 1], not [-1, 1].** ColorJitter and the small additive noise in
+Disco's augmentation stack assume a [0, 1] image. Run them on [-1, 1] data and the colour
+augmentations misbehave, which quietly shifts the palette of every run.
+
+**Use Disco's `ddim<N>` respacing.** `space_timesteps(1000, "ddim250")` picks every
+fourth timestep from zero; the plain `"250"` spacing is a different set of timesteps.
 
 **fp16 can overflow on large frames.** The checkpoints were trained in fp16 and run
 fine that way at 512x512, but at widescreen sizes the attention over a few thousand
