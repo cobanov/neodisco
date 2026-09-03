@@ -120,7 +120,8 @@ python -m neodisco.cli "an ukiyo-e woodblock print::1.0" "neon::0.4" --image-siz
 
 | Flag | Does |
 |---|---|
-| `--strength` | how hard the prompt pulls against the prior |
+| `--clamp-max` | Disco's guidance strength: the cap on the gradient's RMS per step. 0.02 calm, 0.05 default, 0.10 intense |
+| `--strength` | only used with `--clamp-max 0`: a step-relative scale instead of Disco's cap |
 | `--eta` | 0 is deterministic DDIM, 1 is ancestral DDPM. Disco used 0.8 |
 | `--cutn-batches` | how many independent cutout draws are averaged per step |
 | `--overview-cuts` | how much the prompt affects overall composition. A number, or a Disco schedule string like `"[12]*400+[4]*600"` |
