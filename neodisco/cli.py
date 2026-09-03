@@ -4,6 +4,7 @@ import argparse
 import os
 
 import numpy as np
+import torch
 from PIL import Image
 
 from .clip_bank import ClipBank, DEFAULT_MODELS
@@ -59,6 +60,10 @@ def main():
     ap.add_argument('--secondary', help='path to secondary_model_imagenet_2.pth (default weights/disco/)')
     ap.add_argument('--no-secondary', action='store_true',
                     help='take the CLIP gradient through the UNet instead of the secondary model')
+    ap.add_argument('--no-fast-attention', action='store_true',
+                    help='use the original einsum attention instead of fused SDPA')
+    ap.add_argument('--autocast', choices=['none', 'bf16'], default='bf16',
+                    help='run the UNet and secondary model under bf16 autocast (default) or in full fp32')
     ap.add_argument('--fp16', action='store_true',
                     help='half-precision UNet; faster and smaller, but can overflow on wide frames')
     ap.add_argument('--grad-checkpoint', action='store_true')
@@ -103,7 +108,9 @@ def main():
     secondary = args.secondary or PixelBackend.default_secondary_path()
     backend = PixelBackend(ckpt, image_size=settings['image_size'], device=device,
                            fp16=args.fp16, use_checkpoint=args.grad_checkpoint,
-                           secondary_path=None if args.no_secondary else secondary)
+                           secondary_path=None if args.no_secondary else secondary,
+                           fast_attention=not args.no_fast_attention,
+                           autocast_dtype=torch.bfloat16 if args.autocast == 'bf16' else None)
     if backend.secondary is None and not args.no_secondary:
         print('secondary model not found; taking the gradient through the UNet instead '
               f'(expected at {secondary})')

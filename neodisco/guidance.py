@@ -66,19 +66,19 @@ class PromptGuidance:
         callers that produced it from something else push this gradient the rest of the
         way themselves.
         """
-        total = torch.zeros_like(pixels)
         # Disco redraws the cutouts several times per step and averages the gradients.
         # One draw is a noisy estimate of "what the prompt wants here"; averaging a few
-        # steadies it without changing what it asks for.
-        for _ in range(max(int(cutn_batches), 1)):
-            total = total + self._one_draw(pixels, cut_batch, overview, inner, inner_grey_p)
-        return total / max(int(cutn_batches), 1)
+        # steadies it without changing what it asks for. All draws are made up front and
+        # scored in one pass: the mean over the union equals the mean of per-draw means,
+        # and the GPU sees a few large CLIP batches instead of many small ones.
+        return self._one_draw(pixels, cut_batch, overview, inner, inner_grey_p,
+                              draws=max(int(cutn_batches), 1))
 
-    def _one_draw(self, pixels, cut_batch, overview, inner, inner_grey_p):
+    def _one_draw(self, pixels, cut_batch, overview, inner, inner_grey_p, draws=1):
         with torch.enable_grad():
             probe = pixels.detach().requires_grad_(True)
-            cuts = self.cutouts(probe, overview=overview, inner=inner,
-                                inner_grey_p=inner_grey_p)
+            cuts = torch.cat([self.cutouts(probe, overview=overview, inner=inner,
+                                           inner_grey_p=inner_grey_p) for _ in range(draws)])
             n = cuts.shape[0]
             size = cut_batch if cut_batch and cut_batch < n else n
             starts = list(range(0, n, size))

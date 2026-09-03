@@ -173,6 +173,24 @@ They have strong text conditioning and learned composition, so they produce cohe
 images. The Disco look is what a weak prior fighting a weak guidance signal looks
 like, and the only way to get it back is to run that fight again.
 
+## Speed
+
+Measured on an RTX 5090, the example settings file at 1280x768, 250 steps, three CLIP
+backbones, `cutn_batches 4`, secondary model. CLIP distance to the prompt is reported so
+that speed is never bought with a different picture.
+
+| | time | peak VRAM | CLIP distance |
+|---|---|---|---|
+| original einsum attention, fp32 | 201 s | 14.5 GB | 5.141 |
+| fused attention (SDPA), fp32 | 201 s | 14.5 GB | 5.180 |
+| SDPA + bf16 autocast (default) | 180 s | 13.3 GB | 5.139 |
+
+Two lessons from that table. Fused attention on its own changes nothing end to end,
+even though the attention kernel alone is 8x faster in bf16: the UNet forward is not
+where the time goes. And bf16 autocast is a free 10 percent that also removes the fp16
+overflow problem. What actually dominates a step is the guidance, 3 CLIP models x 4
+draws x 16 cutouts, forward and backward, every step; that is where further work pays.
+
 ## How it is built
 
 Four things go wrong in ways that are quiet rather than loud, and all four cost time.

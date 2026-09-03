@@ -26,8 +26,8 @@ CLIP_CHOICES = list(disco_config.CLIP_NAMES.keys())
 _cache = {}
 
 
-def _backend(image_size, weights_dir, fp16):
-    key = (image_size, fp16)
+def _backend(image_size, weights_dir, fp16, bf16=True):
+    key = (image_size, fp16, bf16)
     if key not in _cache:
         for k in list(_cache):
             del _cache[k]
@@ -35,7 +35,8 @@ def _backend(image_size, weights_dir, fp16):
         _cache[key] = PixelBackend(
             PixelBackend.default_path(image_size, weights_dir), image_size=image_size,
             fp16=fp16, use_checkpoint=True,
-            secondary_path=PixelBackend.default_secondary_path(weights_dir))
+            secondary_path=PixelBackend.default_secondary_path(weights_dir),
+            autocast_dtype=torch.bfloat16 if bf16 else None)
     return _cache[key]
 
 
@@ -49,7 +50,7 @@ def _bank(names):
 def generate(prompt_text, settings_file, image_size, width, height, steps, skip_steps, seed,
              eta, clamp_max, clip_scale, tv_scale, range_scale, sat_scale, cutn_batches,
              cut_overview, cut_innercut, cut_icgray_p, inner_size_pow, clip_names,
-             use_secondary, fp16, weights_dir, progress=None):
+             use_secondary, fp16, bf16, weights_dir, progress=None):
     import gradio as gr
     settings = dict(prompts=[], weights=[])
     if settings_file:
@@ -74,7 +75,7 @@ def generate(prompt_text, settings_file, image_size, width, height, steps, skip_
                               clip_scale=float(clip_scale), tv_scale=float(tv_scale),
                               range_scale=float(range_scale), sat_scale=float(sat_scale),
                               clamp_max=float(clamp_max))
-    backend = _backend(int(image_size), weights_dir, bool(fp16))
+    backend = _backend(int(image_size), weights_dir, bool(fp16), bool(bf16))
     seed = int(seed) if int(seed) >= 0 else int(torch.randint(0, 2 ** 31, ()))
 
     def sched(v):
@@ -133,7 +134,8 @@ def build(weights_dir):
                     inner_size_pow = gr.Number(value=1.0, label='cut_ic_pow')
                 with gr.Accordion('Advanced', open=False):
                     use_secondary = gr.Checkbox(value=True, label='Use secondary model (Disco default)')
-                    fp16 = gr.Checkbox(value=False, label='fp16 UNet (can overflow on wide frames)')
+                    bf16 = gr.Checkbox(value=True, label='bf16 autocast (fast, no overflow)')
+                    fp16 = gr.Checkbox(value=False, label='fp16 UNet weights (can overflow on wide frames)')
                 run = gr.Button('Generate', variant='primary')
             with gr.Column(scale=1):
                 out = gr.Image(label='Result', type='pil')
@@ -143,7 +145,7 @@ def build(weights_dir):
                   inputs=[prompt, settings_file, image_size, width, height, steps, skip_steps, seed,
                           eta, clamp_max, clip_scale, tv_scale, range_scale, sat_scale, cutn_batches,
                           cut_overview, cut_innercut, cut_icgray_p, inner_size_pow, clip_names,
-                          use_secondary, fp16, weights_state],
+                          use_secondary, fp16, bf16, weights_state],
                   outputs=[out, used])
     return demo
 

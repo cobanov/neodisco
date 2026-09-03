@@ -28,6 +28,7 @@ from ._guided_diffusion.respace import SpacedDiffusion, space_timesteps
 from ._guided_diffusion import gaussian_diffusion as gd
 from ._guided_diffusion.unet import UNetModel
 from .secondary import SecondaryDiffusionImageNet2, alpha_sigma_to_t
+from . import _fast_attention
 
 # Exactly the settings the released checkpoints were trained with. Getting one of these
 # wrong loads silently and produces noise, so they are spelled out rather than derived.
@@ -64,9 +65,16 @@ class PixelBackend:
     name = 'pixel'
 
     def __init__(self, ckpt_path, image_size=512, device='cuda', fp16=True,
-                 use_checkpoint=False, secondary_path=None):
+                 use_checkpoint=False, secondary_path=None, fast_attention=True,
+                 autocast_dtype=None):
         if image_size not in MODEL_CONFIGS:
             raise ValueError(f'image_size must be 256 or 512, got {image_size}')
+        if fast_attention:
+            _fast_attention.install()
+        # bf16 autocast for the UNet and secondary model forward passes. Unlike fp16
+        # weights it does not overflow on wide frames, and on Ampere and newer it is
+        # close to fp16 speed. None keeps everything in fp32.
+        self.autocast_dtype = autocast_dtype
         self.device = device
         self.image_size = image_size
         cfg = dict(MODEL_CONFIGS[image_size])
@@ -91,6 +99,12 @@ class PixelBackend:
             self.secondary = SecondaryDiffusionImageNet2()
             self.secondary.load_state_dict(torch.load(secondary_path, map_location='cpu'))
             self.secondary.to(device).eval().requires_grad_(False)
+
+    def _autocast(self):
+        import contextlib
+        if self.autocast_dtype is None:
+            return contextlib.nullcontext()
+        return torch.autocast('cuda', dtype=self.autocast_dtype)
 
     @staticmethod
     def default_secondary_path(root='weights/disco'):
@@ -151,7 +165,9 @@ class PixelBackend:
         alphas = diffusion.alphas_cumprod
         for i in indices:
             t = torch.tensor([i] * batch_size, device=self.device)
-            out = diffusion.p_mean_variance(self.model, x, t, clip_denoised=clip_denoised)
+            with self._autocast():
+                out = diffusion.p_mean_variance(self.model, x, t, clip_denoised=clip_denoised)
+            out = {k: (v.float() if torch.is_tensor(v) else v) for k, v in out.items()}
             # Schedules are written front-to-back over the run, while i counts down.
             k = n_steps - 1 - i
 
@@ -178,8 +194,9 @@ class PixelBackend:
                         alpha = torch.tensor(ab ** 0.5, device=self.device)
                         sigma = torch.tensor(s_t, device=self.device)
                         cosine_t = alpha_sigma_to_t(alpha, sigma)
-                        pred = self.secondary(x_g, cosine_t[None].repeat(x_g.shape[0])).pred
-                        x_in = pred * s_t + x_g * (1 - s_t)
+                        with self._autocast():
+                            pred = self.secondary(x_g, cosine_t[None].repeat(x_g.shape[0])).pred
+                        x_in = pred.float() * s_t + x_g * (1 - s_t)
                         pixel_grad = guidance.image_gradient(
                             x_in, cut_batch=cut_batch,
                             overview=overview_at[k] if overview_at else None,
@@ -190,10 +207,11 @@ class PixelBackend:
                 elif through_model:
                     with torch.enable_grad():
                         x_g = x.detach().requires_grad_(True)
-                        out_g = diffusion.p_mean_variance(self.model, x_g, t,
-                                                          clip_denoised=clip_denoised)
-                        x_in = (out_g['pred_xstart'] * s_t + x_g * (1 - s_t)
-                                if disco_blend else out_g['pred_xstart'])
+                        with self._autocast():
+                            out_g = diffusion.p_mean_variance(self.model, x_g, t,
+                                                              clip_denoised=clip_denoised)
+                        x0g = out_g['pred_xstart'].float()
+                        x_in = x0g * s_t + x_g * (1 - s_t) if disco_blend else x0g
                         pixel_grad = guidance.image_gradient(
                             x_in, cut_batch=cut_batch,
                             overview=overview_at[k] if overview_at else None,
