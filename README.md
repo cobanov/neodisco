@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="examples/pixel-strength-sweep.png" alt="Three renders of a fractal coral cathedral at rising guidance strength, over-detailed and dreamlike" width="700">
+  <img src="examples/cobanov-spaceship-1280x768.png" alt="A vast blue-lit capital ship above painterly storm clouds, a laser column behind it and small fighters below: a 2022 Disco Diffusion settings file rendered today" width="900">
 </p>
 
 <p align="center">
