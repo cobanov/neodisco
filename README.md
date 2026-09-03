@@ -130,6 +130,7 @@ python -m neodisco.cli "an ukiyo-e woodblock print::1.0" "neon::0.4" --image-siz
 | `--clip-models` | more backbones means more compositing, less literal |
 | `--cut-batch` | memory only. Lower it if the card runs out |
 | `--grad-checkpoint` | trades speed for memory inside the UNet |
+| `--fp16` | half-precision UNet; opt-in, see the notes below |
 
 ## Why nothing else looks like this
 
@@ -175,7 +176,8 @@ fourth timestep from zero; the plain `"250"` spacing is a different set of times
 **fp16 can overflow on large frames.** The checkpoints were trained in fp16 and run
 fine that way at 512x512, but at widescreen sizes the attention over a few thousand
 tokens overflows on some seeds and the frame comes out blank. The sampler now stops
-with a clear error instead of writing the blank; pass `--fp32` for those runs.
+with a clear error instead of writing the blank. The UNet therefore runs in fp32 by
+default; `--fp16` is opt-in for square frames on small cards.
 
 **Group cutout gradients in image space, not through the decoder.** Chunking the CLIP
 pass to save memory is necessary, but if each chunk backpropagates all the way through

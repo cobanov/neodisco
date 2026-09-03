@@ -59,7 +59,8 @@ def main():
     ap.add_argument('--secondary', help='path to secondary_model_imagenet_2.pth (default weights/disco/)')
     ap.add_argument('--no-secondary', action='store_true',
                     help='take the CLIP gradient through the UNet instead of the secondary model')
-    ap.add_argument('--fp32', action='store_true')
+    ap.add_argument('--fp16', action='store_true',
+                    help='half-precision UNet; faster and smaller, but can overflow on wide frames')
     ap.add_argument('--grad-checkpoint', action='store_true')
     args = ap.parse_args()
 
@@ -101,7 +102,7 @@ def main():
     ckpt = args.ckpt or PixelBackend.default_path(settings['image_size'])
     secondary = args.secondary or PixelBackend.default_secondary_path()
     backend = PixelBackend(ckpt, image_size=settings['image_size'], device=device,
-                           fp16=not args.fp32, use_checkpoint=args.grad_checkpoint,
+                           fp16=args.fp16, use_checkpoint=args.grad_checkpoint,
                            secondary_path=None if args.no_secondary else secondary)
     if backend.secondary is None and not args.no_secondary:
         print('secondary model not found; taking the gradient through the UNet instead '
