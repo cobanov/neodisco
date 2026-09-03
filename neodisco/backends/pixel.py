@@ -117,6 +117,23 @@ class PixelBackend:
         return os.path.join(root, names[image_size])
 
     @staticmethod
+    def _load_init(image, w, h):
+        """Path, PIL image or tensor -> (1, 3, h, w) in [-1, 1], resized to the frame."""
+        from PIL import Image
+        if torch.is_tensor(image):
+            t = image.float()
+            if t.dim() == 3:
+                t = t[None]
+        else:
+            pil = Image.open(image) if isinstance(image, str) else image
+            pil = pil.convert('RGB').resize((w, h), Image.LANCZOS)
+            t = torch.from_numpy(np.asarray(pil)).permute(2, 0, 1)[None].float() / 127.5 - 1
+        if t.shape[-2:] != (h, w):
+            t = torch.nn.functional.interpolate(t, size=(h, w), mode='bicubic',
+                                                align_corners=False, antialias=True)
+        return t
+
+    @staticmethod
     def to_uint8(pixels):
         return ((pixels + 1) * 127.5).clamp(0, 255).to(torch.uint8) \
             .permute(0, 2, 3, 1).cpu().numpy()
@@ -126,7 +143,7 @@ class PixelBackend:
                guidance_strength=1.0, cut_batch=0, eta=0.0, width=None, height=None,
                cut_overview=None, cut_innercut=None, cut_icgray_p=None, cutn_batches=1,
                clip_denoised=False, skip_steps=0, through_model=True, disco_blend=True,
-               use_secondary=True, progress=True):
+               use_secondary=True, init_image=None, init_scale=0.0, progress=True):
         """Sample an image.
 
         `width` and `height` may differ from the checkpoint's nominal size: the UNet is
@@ -152,12 +169,25 @@ class PixelBackend:
         shape = (batch_size, 3, h, w)
         x = torch.randn(*shape, generator=g).to(self.device)
 
+        # Disco's init image: start from the image noised to the first step actually run,
+        # rather than from pure noise. With skip_steps at about half the run, the
+        # composition of the init survives and the guidance repaints the detail; this
+        # is also how Disco upscaled, rendering small and re-running large from the result.
+        init = None
+        if init_image is not None:
+            init = self._load_init(init_image, w, h).to(self.device).expand(batch_size, -1, -1, -1)
+            if guidance is not None:
+                guidance.set_init(init, init_scale)
+
         n_steps = diffusion.num_timesteps
         overview_at = parse_schedule(cut_overview, n_steps)
         inner_at = parse_schedule(cut_innercut, n_steps)
         grey_at = parse_schedule(cut_icgray_p, n_steps)
 
         indices = list(range(n_steps - int(skip_steps)))[::-1]
+        if init is not None:
+            t_start = torch.tensor([indices[0]] * batch_size, device=self.device)
+            x = diffusion.q_sample(init, t_start, noise=x)
         if progress:
             from tqdm import tqdm
             indices = tqdm(indices, desc='sampling')

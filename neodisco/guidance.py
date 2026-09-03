@@ -24,6 +24,27 @@ class PromptGuidance:
         self.range_scale = range_scale
         self.sat_scale = sat_scale
         self.clamp_max = clamp_max
+        self.init = None
+        self.init_scale = 0.0
+        self._lpips = None
+
+    def set_init(self, init, init_scale):
+        """Keep the sample perceptually close to an init image (Disco's init_scale).
+
+        Uses LPIPS with the VGG backbone, as Disco did. Needs the `lpips` package; if it
+        is missing the term is skipped with a message rather than failing the run.
+        """
+        self.init = init
+        self.init_scale = float(init_scale)
+        if self.init is None or not self.init_scale:
+            return
+        try:
+            import lpips
+            self._lpips = lpips.LPIPS(net='vgg', verbose=False).to(init.device).eval()
+            self._lpips.requires_grad_(False)
+        except ImportError:
+            print('lpips is not installed; init_scale ignored (pip install lpips)')
+            self._lpips = None
 
     def _clip_term(self, cuts):
         """Mean spherical distance between a set of cutouts and the prompts."""

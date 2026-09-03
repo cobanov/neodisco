@@ -74,4 +74,6 @@ def load(path, frame=0):
         inner_size_pow=float(cfg.get('cut_ic_pow', 1.0)),
         clip_denoised=bool(cfg.get('clip_denoised', False)),
         use_secondary=bool(cfg.get('use_secondary_model', True)),
+        init_image=cfg.get('init_image') or None,
+        init_scale=float(cfg.get('init_scale', 0) or 0),
     )

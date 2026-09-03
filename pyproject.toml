@@ -15,6 +15,7 @@ dependencies = [
 
 [project.optional-dependencies]
 webui = ["gradio>=4.0"]
+init = ["lpips"]
 
 [build-system]
 requires = ["hatchling"]

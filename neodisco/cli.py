@@ -49,7 +49,10 @@ def main():
     ap.add_argument('--out', default='out.png')
     ap.add_argument('--batch-size', type=int, default=1)
     ap.add_argument('--steps', type=int)
-    ap.add_argument('--skip-steps', type=int)
+    ap.add_argument('--skip-steps', type=int,
+                    help='steps to skip; with --init-image, how much of the init survives')
+    ap.add_argument('--init-image', help='start from this image instead of noise (Disco init_image)')
+    ap.add_argument('--init-scale', type=float, help='LPIPS pull toward the init image (Disco init_scale, e.g. 1000)')
     ap.add_argument('--eta', type=float, help='0 = DDIM, 1 = DDPM, Disco used 0.8')
     ap.add_argument('--seed', type=int)
     ap.add_argument('--strength', type=float, default=3.0,
@@ -87,13 +90,14 @@ def main():
                     height=None, steps=250, skip_steps=0, eta=0.8, seed=0, clip_scale=5000.0,
                     tv_scale=0.0, range_scale=150.0, sat_scale=0.0, clamp_max=0.05,
                     cutn_batches=1, cut_overview=4, cut_innercut=16, cut_icgray_p=0.2,
-                    inner_size_pow=0.5, clip_denoised=False, use_secondary=True)
+                    inner_size_pow=0.5, clip_denoised=False, use_secondary=True,
+                    init_image=None, init_scale=0.0)
     if args.disco_config:
         settings.update(disco_config.load(args.disco_config))
     for key in ('image_size', 'width', 'height', 'steps', 'skip_steps', 'eta', 'seed',
                 'clip_scale', 'tv_scale', 'range_scale', 'sat_scale', 'clamp_max',
                 'cutn_batches', 'cut_overview', 'cut_innercut', 'cut_icgray_p',
-                'inner_size_pow'):
+                'inner_size_pow', 'init_image', 'init_scale'):
         value = getattr(args, key)
         if value is not None:
             settings[key] = value
@@ -134,7 +138,8 @@ def main():
         cut_overview=settings['cut_overview'], cut_innercut=settings['cut_innercut'],
         cut_icgray_p=settings['cut_icgray_p'], cutn_batches=settings['cutn_batches'],
         clip_denoised=settings['clip_denoised'], skip_steps=settings['skip_steps'],
-        use_secondary=settings['use_secondary'] and not args.no_secondary)
+        use_secondary=settings['use_secondary'] and not args.no_secondary,
+        init_image=settings['init_image'], init_scale=settings['init_scale'])
     images = backend.to_uint8(pixels)
 
     os.makedirs(os.path.dirname(args.out) or '.', exist_ok=True)

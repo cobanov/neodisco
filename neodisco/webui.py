@@ -48,7 +48,7 @@ def _bank(names):
     return _cache[key]
 
 
-def generate(prompt_text, settings_file, image_size, width, height, steps, skip_steps, seed,
+def generate(prompt_text, settings_file, init_image, init_scale, image_size, width, height, steps, skip_steps, seed,
              eta, clamp_max, clip_scale, tv_scale, range_scale, sat_scale, cutn_batches,
              cut_overview, cut_innercut, cut_icgray_p, inner_size_pow, clip_names,
              use_secondary, fp16, bf16, weights_dir, progress=None):
@@ -90,7 +90,7 @@ def generate(prompt_text, settings_file, image_size, width, height, steps, skip_
         eta=float(eta), skip_steps=int(skip_steps), cut_overview=sched(cut_overview),
         cut_innercut=sched(cut_innercut), cut_icgray_p=sched(cut_icgray_p),
         cutn_batches=int(cutn_batches), cut_batch=64, use_secondary=bool(use_secondary),
-        progress=False)
+        init_image=init_image or None, init_scale=float(init_scale or 0), progress=False)
     image = Image.fromarray(backend.to_uint8(pixels)[0])
     used = dict(settings, seed=seed, width=int(width), height=int(height), steps=int(steps),
                 eta=float(eta), clamp_max=float(clamp_max), clip_models=names)
@@ -109,6 +109,12 @@ def build(weights_dir):
                 prompt = gr.Textbox(label='Prompts', lines=4,
                                     value='a fractal cathedral of glowing coral, intricate, dreamlike, trending on artstation')
                 settings_file = gr.File(label='Disco settings .json (optional)', file_types=['.json'], type='filepath')
+                with gr.Accordion('Init image (upscale or steer from a picture)', open=False):
+                    gr.Markdown('Start from an image instead of noise. For a two-stage upscale, render '
+                                'small, drop the result here, set the frame larger and skip about half '
+                                'the steps: the composition survives and the detail is repainted.')
+                    init_image = gr.Image(label='Init image', type='filepath')
+                    init_scale = gr.Number(value=1000, label='init_scale (LPIPS pull toward the init; 0 = off)')
                 with gr.Row():
                     image_size = gr.Radio([256, 512], value=512, label='Checkpoint')
                     width = gr.Number(value=1280, precision=0, label='Width (multiple of 64)')
@@ -143,7 +149,7 @@ def build(weights_dir):
                 used = gr.Code(label='Settings used (paste back into a .json)', language='json')
         weights_state = gr.State(weights_dir)
         run.click(generate,
-                  inputs=[prompt, settings_file, image_size, width, height, steps, skip_steps, seed,
+                  inputs=[prompt, settings_file, init_image, init_scale, image_size, width, height, steps, skip_steps, seed,
                           eta, clamp_max, clip_scale, tv_scale, range_scale, sat_scale, cutn_batches,
                           cut_overview, cut_innercut, cut_icgray_p, inner_size_pow, clip_names,
                           use_secondary, fp16, bf16, weights_state],

@@ -128,6 +128,26 @@ in, and a slot for an old settings `.json`. The settings actually used come back
 next to the image, so a result you like can be re-run or shared as a file. Pass `--host
 0.0.0.0` to reach it from another machine on your network.
 
+### Upscaling with an init image
+
+Disco never had a 2048-pixel model; it had `init_image` and `skip_steps`. Render small,
+then run again at the larger frame starting from that render instead of from noise, with
+about half the steps skipped. The composition survives and the guidance repaints the
+detail at the new size.
+
+![stage 1, 640x384](examples/upscale-stage1-640x384.png)
+![stage 2, 1280x768 from the stage-1 image](examples/upscale-stage2-1280x768.png)
+
+```bash
+python -m neodisco.cli --disco-config settings.json --width 640 --height 384 --out small.png
+python -m neodisco.cli --disco-config settings.json --width 1280 --height 768 \
+  --init-image small.png --skip-steps 125 --init-scale 1000 --out large.png
+```
+
+`--init-scale` is Disco's LPIPS pull toward the init (it needs `pip install lpips`);
+`--skip-steps` sets how much of the init survives, 125 of 250 keeps the composition,
+50 lets the model wander further from it.
+
 ### The knobs that change the look
 
 | Flag | Does |
