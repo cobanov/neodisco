@@ -183,13 +183,25 @@ that speed is never bought with a different picture.
 |---|---|---|---|
 | original einsum attention, fp32 | 201 s | 14.5 GB | 5.141 |
 | fused attention (SDPA), fp32 | 201 s | 14.5 GB | 5.180 |
-| SDPA + bf16 autocast (default) | 180 s | 13.3 GB | 5.139 |
+| SDPA + bf16 autocast on the UNet | 180 s | 13.3 GB | 5.139 |
+| + `--cut-batch 64` (default) | **143 s** | 20.8 GB | 5.142 |
 
-Two lessons from that table. Fused attention on its own changes nothing end to end,
-even though the attention kernel alone is 8x faster in bf16: the UNet forward is not
-where the time goes. And bf16 autocast is a free 10 percent that also removes the fp16
-overflow problem. What actually dominates a step is the guidance, 3 CLIP models x 4
-draws x 16 cutouts, forward and backward, every step; that is where further work pays.
+What the table says. Fused attention on its own changes nothing end to end, even though
+the attention kernel alone is 8x faster in bf16: the UNet forward is not where the time
+goes. bf16 on the UNet is a free 10 percent that also removes the fp16 overflow problem.
+The real cost is the guidance, 3 CLIP models x 4 draws x 16 cutouts, forward and backward,
+every step, and most of *that* was launch overhead from scoring the cutouts in small
+groups: going from 16 to 64 per group made the guidance pass 3x faster with an identical
+gradient (cosine 0.998 against the chunked version). It costs memory; on a 12 GB card use
+`--cut-batch 16`.
+
+One thing that does not work: running CLIP itself under bf16. It is barely faster (the
+cost is launches, not math) and it changes the gradient direction substantially (cosine
+0.46 against fp32). CLIP stays in fp32.
+
+Profile of one step at 1280x768 after these changes: UNet forward ~256 ms, CLIP guidance
+~144 ms, secondary model ~22 ms, cutouts ~18 ms. The UNet is now the largest item;
+`torch.compile` on it is the next lever.
 
 ## How it is built
 

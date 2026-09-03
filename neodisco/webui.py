@@ -21,6 +21,7 @@ from .cutouts import MakeCutouts
 from .guidance import PromptGuidance
 from .backends.pixel import PixelBackend
 from . import disco_config
+from .cli import _raise_fd_limit
 
 CLIP_CHOICES = list(disco_config.CLIP_NAMES.keys())
 _cache = {}
@@ -88,7 +89,7 @@ def generate(prompt_text, settings_file, image_size, width, height, steps, skip_
         guidance=guidance, steps=int(steps), seed=seed, width=int(width), height=int(height),
         eta=float(eta), skip_steps=int(skip_steps), cut_overview=sched(cut_overview),
         cut_innercut=sched(cut_innercut), cut_icgray_p=sched(cut_icgray_p),
-        cutn_batches=int(cutn_batches), cut_batch=16, use_secondary=bool(use_secondary),
+        cutn_batches=int(cutn_batches), cut_batch=64, use_secondary=bool(use_secondary),
         progress=False)
     image = Image.fromarray(backend.to_uint8(pixels)[0])
     used = dict(settings, seed=seed, width=int(width), height=int(height), steps=int(steps),
@@ -157,6 +158,7 @@ def main():
     ap.add_argument('--port', type=int, default=7860)
     ap.add_argument('--share', action='store_true')
     args = ap.parse_args()
+    _raise_fd_limit()
     demo = build(args.weights)
     demo.queue(max_size=8).launch(server_name=args.host, server_port=args.port, share=args.share,
                                   show_error=True)

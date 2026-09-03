@@ -13,6 +13,18 @@ from .guidance import PromptGuidance
 from . import disco_config
 
 
+def _raise_fd_limit():
+    """Large cutout batches plus three CLIP towers can exceed a 1024-descriptor soft
+    limit, which surfaces as a confusing CUDA "unknown error". Lift it if we may."""
+    try:
+        import resource
+        soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+        if soft < 65536:
+            resource.setrlimit(resource.RLIMIT_NOFILE, (min(65536, hard), hard))
+    except Exception:
+        pass
+
+
 def parse_prompts(items):
     prompts, weights = [], []
     for p in items:
@@ -52,8 +64,8 @@ def main():
     ap.add_argument('--inner-grey-p', dest='cut_icgray_p', help='fraction or schedule string')
     ap.add_argument('--inner-size-pow', type=float)
     ap.add_argument('--cutn-batches', type=int)
-    ap.add_argument('--cut-batch', type=int, default=8,
-                    help='CLIP cutouts per group; memory only')
+    ap.add_argument('--cut-batch', type=int, default=64,
+                    help='CLIP cutouts per group. Bigger is faster (3x from 16 to 64); lower it only if memory runs out')
     ap.add_argument('--no-augment', action='store_true')
     ap.add_argument('--clip-models', help='comma list, e.g. "ViT-B-32-quickgelu:openai,RN50-quickgelu:openai"')
     ap.add_argument('--clip-denoised', action='store_true')
@@ -68,6 +80,7 @@ def main():
                     help='half-precision UNet; faster and smaller, but can overflow on wide frames')
     ap.add_argument('--grad-checkpoint', action='store_true')
     args = ap.parse_args()
+    _raise_fd_limit()
 
     # Start from the Disco file if given, then let explicit flags override.
     settings = dict(prompts=[], weights=[], clip_models=None, image_size=512, width=None,
