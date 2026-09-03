@@ -164,7 +164,7 @@ with a clear error instead of writing the blank; pass `--fp32` for those runs.
 pass to save memory is necessary, but if each chunk backpropagates all the way through
 a decoder, sampling slows by the number of chunks for no change in the answer.
 
-The same guidance also runs against our own rectified-flow latent models, trained from scratch on a single GPU; that lives in a separate project, [cobanov-diffusion](https://github.com/cobanov/cobanov-diffusion), which imports this package for the cutouts, losses and CLIP bank.
+The same guidance also runs against our own rectified-flow latent models, trained from scratch on a single GPU; that lives in a separate project, `cobanov-diffusion`, which imports this package for the cutouts, losses and CLIP bank.
 
 ## Licence
 
