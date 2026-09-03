@@ -14,7 +14,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-webui = ["gradio>=4.0"]
+webui = ["fastapi", "uvicorn[standard]", "python-multipart"]
 init = ["lpips"]
 
 [build-system]

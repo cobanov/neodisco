@@ -238,10 +238,15 @@ class PixelBackend:
             # Disco returns -grad(loss), clamped to clamp_max, as the score direction.
             return -guidance.clamp(grad)
 
-        iterator = indices
-        if progress:
+        # `progress` is either a flag (show a tqdm bar) or a callable that wraps the
+        # iterator, which is how the server reports step counts to the browser.
+        if callable(progress):
+            iterator = progress(indices)
+        elif progress:
             from tqdm import tqdm
             iterator = tqdm(indices, desc='sampling')
+        else:
+            iterator = indices
 
         for i in iterator:
             t = torch.tensor([i] * batch_size, device=self.device)
