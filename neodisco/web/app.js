@@ -55,8 +55,9 @@ const setGhost = () => {
   const availW = stage.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
   const availH = stage.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
   const scale = Math.min(availW / size.w, availH / size.h, 1);
-  ghost.style.width = Math.round(size.w * scale) + 'px';
-  ghost.style.height = Math.round(size.h * scale) + 'px';
+  const frame = $('frame');
+  frame.style.width = Math.round(size.w * scale) + 'px';
+  frame.style.height = Math.round(size.h * scale) + 'px';
   $('ghost-dim').innerHTML = `${size.w} &times; ${size.h}`;
   $('m-dim').textContent = `${size.w}×${size.h}`;
 };
@@ -120,8 +121,26 @@ function reveal(id, job) {
 function watch(id) {
   clearInterval(polling);
   polling = setInterval(async () => {
-    const j = await fetch(`/api/job/${id}`).then((r) => r.json()).catch(() => null);
-    if (!j) return;
+    // Ag hatasi gecicidir, yoklamaya devam edilir. 404 kalicidir: sunucu yeniden
+    // baslamis ya da is gecmisten dusmustur, o kimlik bir daha donmez. Ayirmazsak
+    // 404 govdesinde state alani olmadigi icin asagidaki dallarin hicbiri tutmuyor,
+    // sayfa son sayilarda donup kaliyor ve Generate sonsuza kadar kapali kaliyordu.
+    let res;
+    try { res = await fetch(`/api/job/${id}`); } catch (err) { return; }
+    if (res.status === 404) {
+      clearInterval(polling);
+      $('state').textContent = t('lost', 'kayıp');
+      $('bar').style.width = '0';
+      showError(t('That job is gone, the server restarted. Generate again.',
+                  'O iş kayboldu, sunucu yeniden başlamış. Yeniden üret.'));
+      ghost.classList.remove('busy');
+      $('ghost-note').textContent = t('write a prompt', 'bir prompt yaz');
+      $('go').disabled = false;
+      return;
+    }
+    if (!res.ok) return;
+    const j = await res.json().catch(() => null);
+    if (!j || !j.state) return;
     if (j.state === 'queued') {
       $('state').textContent = t(`queued ${j.position}`, `sırada ${j.position}`);
     } else if (j.state === 'running') {

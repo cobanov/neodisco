@@ -161,7 +161,7 @@ DEFAULTS = dict(prompts=[], weights=[], clip_models=['ViTB32', 'ViTB16', 'RN50']
 
 def build_app(runner, uploads):
     from fastapi import FastAPI, HTTPException, UploadFile, File
-    from fastapi.responses import FileResponse, JSONResponse
+    from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
     from fastapi.staticfiles import StaticFiles
 
     app = FastAPI(title='neodisco')
@@ -231,6 +231,17 @@ def build_app(runner, uploads):
         if not path.exists():
             raise HTTPException(404, 'not ready')
         return JSONResponse(json.loads(path.read_text()))
+
+    # index.html'i StaticFiles'tan once yakalayip app.css/app.js baglantilarina dosya
+    # mtime'ini damgaliyoruz. Damga olmadan tarayici deploy sonrasi eski stylesheet'i
+    # onbellekten servis ediyor: yeni JS ile eski CSS karisiyor ve sayfa bozuk gorunuyor.
+    @app.get('/')
+    async def index():
+        html = (WEB / 'index.html').read_text(encoding='utf-8')
+        for asset in ('app.css', 'app.js'):
+            stamp = int((WEB / asset).stat().st_mtime)
+            html = html.replace(f'"{asset}"', f'"{asset}?v={stamp}"')
+        return HTMLResponse(html, headers={'Cache-Control': 'no-cache'})
 
     app.mount('/', StaticFiles(directory=str(WEB), html=True), name='web')
     return app
