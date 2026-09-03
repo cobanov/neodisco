@@ -39,13 +39,29 @@ const EXAMPLES = [
 
 let size = { w: 1280, h: 768 };
 const ghost = $('ghost');
+// Konsol prompt uzadikca buyuyor. Sahnenin alt bosluğunu onun gercek yuksekligine
+// bagla, yoksa cerceve konsolun uzerine biner.
+const fitStage = () => {
+  const c = document.querySelector('.console');
+  const bottom = Math.round(window.innerHeight - c.getBoundingClientRect().top) + 28;
+  document.documentElement.style.setProperty('--stage-bottom', bottom + 'px');
+};
 const setGhost = () => {
-  ghost.style.aspectRatio = `${size.w} / ${size.h}`;
-  ghost.style.width = size.w + 'px';
+  fitStage();
+  // Kullanilabilir alani olcup orana sigan en buyuk kutuyu ver. Goruntu de ayni
+  // kutuya oturdugu icin cerceve ile sonuc birebir ayni yerde duruyor.
+  const stage = $('stage');
+  const cs = getComputedStyle(stage);
+  const availW = stage.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+  const availH = stage.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+  const scale = Math.min(availW / size.w, availH / size.h, 1);
+  ghost.style.width = Math.round(size.w * scale) + 'px';
+  ghost.style.height = Math.round(size.h * scale) + 'px';
   $('ghost-dim').innerHTML = `${size.w} &times; ${size.h}`;
   $('m-dim').textContent = `${size.w}×${size.h}`;
 };
 setGhost();
+addEventListener('resize', setGhost);
 
 const ratios = $('ratios');
 ratios.addEventListener('click', (e) => {
@@ -64,12 +80,14 @@ $('dice').addEventListener('click', () => {
   if (pick === prompt.value) pick = EXAMPLES[(EXAMPLES.indexOf(pick) + 1) % EXAMPLES.length];
   prompt.value = pick;
   grow();
+  setGhost();
   prompt.focus();
 });
 
 const prompt = $('prompt');
 const grow = () => { prompt.style.height = 'auto'; prompt.style.height = Math.min(prompt.scrollHeight, 96) + 'px'; };
-prompt.addEventListener('input', grow);
+prompt.addEventListener('input', () => { grow(); setGhost(); });
+if (window.ResizeObserver) new ResizeObserver(() => setGhost()).observe(document.querySelector('.console'));
 prompt.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('form').requestSubmit(); }
 });
@@ -133,7 +151,7 @@ function watch(id) {
 $('form').addEventListener('submit', async (e) => {
   e.preventDefault();
   showError('');
-  const text = prompt.value.trim() || prompt.placeholder;
+  const text = prompt.value.trim() || EXAMPLES[0];
   $('go').disabled = true;
   $('state').textContent = t('sending', 'gönderiliyor');
   $('bar').style.width = '0';
