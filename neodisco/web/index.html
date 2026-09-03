@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>neodisco</title>
 <meta name="description" content="Disco Diffusion's original models, running on current GPUs.">
-<meta name="theme-color" content="#0e0d0f">
+<meta name="theme-color" content="#000000">
 <meta property="og:title" content="neodisco">
 <meta property="og:description" content="Disco Diffusion's original models, running on current GPUs.">
 <meta property="og:type" content="website">
@@ -13,161 +13,61 @@
 <meta property="og:locale:alternate" content="tr_TR">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap">
 <link rel="stylesheet" href="app.css">
 <script>
-  // İçerikten önce: dil yalnız localStorage'dan okunur, tarayıcı diline bakılmaz.
-  try { var l = localStorage.getItem('lang'); if (l === 'tr') { document.documentElement.setAttribute('data-lang', 'tr'); document.documentElement.lang = 'tr'; } } catch (e) {}
+  try { if (localStorage.getItem('lang') === 'tr') { document.documentElement.setAttribute('data-lang','tr'); document.documentElement.lang='tr'; } } catch (e) {}
 </script>
 </head>
 <body>
-<a class="skip" href="#main"><span lang="en">Skip to content</span><span lang="tr">İçeriğe geç</span></a>
+<a class="skip" href="#prompt"><span lang="en">Skip to prompt</span><span lang="tr">Prompt'a geç</span></a>
 
-<header class="masthead">
-  <div class="shell">
-    <span class="wordmark"><span class="dot"></span>neodisco</span>
-    <nav>
-      <a href="https://github.com/cobanov/neodisco" class="nav-icon" aria-label="GitHub" target="_blank" rel="noopener">
-        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
-      </a>
-      <button class="lang-toggle" id="lang" type="button">TR</button>
-    </nav>
-  </div>
-</header>
+<div class="hud hud-tl">
+  <b>neodisco</b>
+  <span class="key">512 UNCOND</span>
+</div>
 
-<main id="main">
-  <section class="hero shell">
-    <span class="eyebrow">2021 &middot; 2022 &rarr; <span class="mono">now</span></span>
-    <h1><span lang="en">Disco Diffusion, on a card made this year</span><span lang="tr">Disco Diffusion, bu yılın kartında</span></h1>
-    <p class="lede">
-      <span lang="en">The original unconditional ImageNet checkpoints, CLIP guidance through cutouts, Katherine Crowson's secondary model. Write a prompt, or drop in a settings file you still have from back then.</span>
-      <span lang="tr">Orijinal koşulsuz ImageNet ağırlıkları, kesitler üzerinden CLIP rehberliği, Katherine Crowson'un ikincil modeli. Bir prompt yaz, ya da o zamanlardan kalan ayar dosyanı bırak.</span>
+<div class="hud hud-tr">
+  <span><span class="key">STATE</span> <span class="val" id="state">idle</span></span>
+  <button class="lang-toggle" id="lang" type="button">TR</button>
+</div>
+
+<div class="hud hud-bl" id="meta">
+  <span><span class="key">DIM</span> <span class="val" id="m-dim">1280&times;768</span></span>
+  <span><span class="key">STEP</span> <span class="val" id="m-step">250</span></span>
+  <span><span class="key">SEED</span> <span class="val" id="m-seed">—</span></span>
+  <span><span class="key">TIME</span> <span class="val" id="m-time">—</span></span>
+</div>
+
+<main class="stage" id="stage">
+  <div class="frame" id="frame">
+    <i aria-hidden="true"></i>
+    <p class="placeholder" id="placeholder">
+      <span lang="en">write a prompt</span><span lang="tr">bir prompt yaz</span>
     </p>
-  </section>
-
-  <div class="work shell">
-    <form id="form" autocomplete="off">
-      <div class="panel">
-        <h2><span lang="en">Prompt</span><span lang="tr">Prompt</span></h2>
-        <p class="hint">
-          <span lang="en">One per line. End a line with <code>:2</code> to weight it. Artist names carried most of the weight back then.</span>
-          <span lang="tr">Her satır bir prompt. Ağırlık için satır sonuna <code>:2</code> yaz. O dönem işi taşıyan şey sanatçı isimleriydi.</span>
-        </p>
-        <div class="field">
-          <textarea id="prompt_text" rows="4" spellcheck="false">An enourmous sci-fi spaceship attacking to massive deathstar in front of a blackhole with galactic soldiers by greg rutkowski and thomas kinkade, Trending on artstation.
-blue color scheme</textarea>
-        </div>
-        <div class="field">
-          <label for="disco_json"><span lang="en">Disco settings file (optional)</span><span lang="tr">Disco ayar dosyası (isteğe bağlı)</span></label>
-          <input type="file" id="disco_json" accept=".json">
-        </div>
-      </div>
-
-      <div class="panel">
-        <h2><span lang="en">Frame</span><span lang="tr">Çerçeve</span></h2>
-        <p class="hint"><span lang="en">Any size that is a multiple of 64.</span><span lang="tr">64'ün katı her boyut.</span></p>
-        <div class="row field">
-          <div><label for="width">Width</label><input type="number" id="width" value="1280" step="64" min="64"></div>
-          <div><label for="height">Height</label><input type="number" id="height" value="768" step="64" min="64"></div>
-          <div><label for="image_size"><span lang="en">Model</span><span lang="tr">Model</span></label>
-            <select id="image_size"><option value="512" selected>512</option><option value="256">256</option></select></div>
-        </div>
-        <div class="row field">
-          <div><label for="steps">Steps</label><input type="number" id="steps" value="250" min="20" max="1000"></div>
-          <div><label for="skip_steps">Skip</label><input type="number" id="skip_steps" value="10" min="0"></div>
-          <div><label for="seed">Seed</label><input type="number" id="seed" value="-1"></div>
-        </div>
-      </div>
-
-      <div class="panel">
-        <h2><span lang="en">Guidance</span><span lang="tr">Rehberlik</span></h2>
-        <p class="hint">
-          <span lang="en"><code>clamp_max</code> is the strength dial: 0.02 calm, 0.05 as shipped, 0.10 intense.</span>
-          <span lang="tr"><code>clamp_max</code> güç düğmesi: 0.02 sakin, 0.05 orijinal, 0.10 sert.</span>
-        </p>
-        <div class="row field">
-          <div><label for="clamp_max">clamp_max</label><input type="number" id="clamp_max" value="0.05" step="0.005" min="0"></div>
-          <div><label for="eta">eta</label><input type="number" id="eta" value="0.8" step="0.05" min="0" max="1"></div>
-          <div><label for="cutn_batches">cutn_batches</label><input type="number" id="cutn_batches" value="4" min="1" max="8"></div>
-        </div>
-        <div class="field">
-          <label><span lang="en">CLIP models</span><span lang="tr">CLIP modelleri</span></label>
-          <div class="checks">
-            <label class="check"><input type="checkbox" name="clip" value="ViTB32" checked>ViT-B/32</label>
-            <label class="check"><input type="checkbox" name="clip" value="ViTB16" checked>ViT-B/16</label>
-            <label class="check"><input type="checkbox" name="clip" value="RN50" checked>RN50</label>
-            <label class="check"><input type="checkbox" name="clip" value="ViTL14">ViT-L/14</label>
-            <label class="check"><input type="checkbox" name="clip" value="RN101">RN101</label>
-          </div>
-        </div>
-
-        <details class="more">
-          <summary><span lang="en">Everything else</span><span lang="tr">Diğer ayarlar</span></summary>
-          <div>
-            <div class="row field">
-              <div><label for="clip_scale">clip_scale</label><input type="number" id="clip_scale" value="5000"></div>
-              <div><label for="range_scale">range_scale</label><input type="number" id="range_scale" value="150"></div>
-              <div><label for="tv_scale">tv_scale</label><input type="number" id="tv_scale" value="0"></div>
-              <div><label for="sat_scale">sat_scale</label><input type="number" id="sat_scale" value="0"></div>
-            </div>
-            <div class="field"><label for="cut_overview">cut_overview</label><input type="text" id="cut_overview" class="mono" value="[12]*400+[4]*600"></div>
-            <div class="field"><label for="cut_innercut">cut_innercut</label><input type="text" id="cut_innercut" class="mono" value="[4]*400+[12]*600"></div>
-            <div class="field"><label for="cut_icgray_p">cut_icgray_p</label><input type="text" id="cut_icgray_p" class="mono" value="[0.2]*400+[0]*600"></div>
-            <div class="row field">
-              <div><label for="inner_size_pow">cut_ic_pow</label><input type="number" id="inner_size_pow" value="1" step="0.1"></div>
-              <div><label for="init_scale">init_scale</label><input type="number" id="init_scale" value="0"></div>
-            </div>
-            <div class="field">
-              <label for="init_image"><span lang="en">Init image (upscale or steer)</span><span lang="tr">Başlangıç görüntüsü (büyütme ya da yönlendirme)</span></label>
-              <input type="file" id="init_image" accept="image/*">
-            </div>
-            <div class="checks">
-              <label class="check"><input type="checkbox" id="use_secondary" checked><span lang="en">Secondary model</span><span lang="tr">İkincil model</span></label>
-              <label class="check"><input type="checkbox" id="fp16">fp16</label>
-            </div>
-          </div>
-        </details>
-      </div>
-
-      <div class="panel">
-        <button class="btn btn-primary" id="go" type="submit"><span lang="en">Generate</span><span lang="tr">Üret</span></button>
-        <div class="status">
-          <span class="state mono" id="state" data-state="idle">idle</span>
-          <span class="bar"><i id="bar"></i></span>
-          <span class="nums" id="nums"></span>
-        </div>
-        <div id="error"></div>
-      </div>
-    </form>
-
-    <div>
-      <div class="stage" id="stage">
-        <p class="empty">
-          <span lang="en">Nothing rendered yet. A 1280&times;768 run at 250 steps takes about two minutes.</span>
-          <span lang="tr">Henüz bir şey üretilmedi. 1280&times;768, 250 adım yaklaşık iki dakika sürüyor.</span>
-        </p>
-      </div>
-      <div class="status">
-        <a class="btn" id="download" href="#" download hidden><span lang="en">Download</span><span lang="tr">İndir</span></a>
-        <a class="btn" id="settings_link" href="#" target="_blank" rel="noopener" hidden><span lang="en">Settings JSON</span><span lang="tr">Ayar JSON</span></a>
-      </div>
-      <div class="gallery" id="gallery"></div>
-    </div>
   </div>
 </main>
 
-<footer>
-  <div class="shell">
-    <a href="https://cobanov.dev">cobanov.dev</a>
-    <div class="footer-social">
-      <a href="https://x.com/mertcobanov" aria-label="X" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18.9 2H22l-7.1 8.1L23 22h-6.6l-5.1-6.7L5.4 22H2.3l7.6-8.7L1.6 2h6.8l4.6 6.1L18.9 2Zm-1.1 18h1.7L7.3 3.8H5.4L17.8 20Z"/></svg></a>
-      <a href="https://github.com/cobanov" aria-label="GitHub" target="_blank" rel="noopener"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg></a>
-      <a href="https://www.linkedin.com/in/mertcobanoglu/" aria-label="LinkedIn" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.98 3.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5ZM3 9h4v12H3V9Zm7 0h3.8v1.7h.05c.53-1 1.83-2.05 3.77-2.05 4.03 0 4.78 2.65 4.78 6.1V21h-4v-5.4c0-1.29-.02-2.95-1.8-2.95-1.8 0-2.08 1.4-2.08 2.85V21h-4V9Z"/></svg></a>
-      <a href="mailto:mertcobanov@gmail.com" aria-label="Email"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5Zm2.5.5 7.5 6 7.5-6H4.5ZM20 8.4l-7.4 5.9a1 1 0 0 1-1.2 0L4 8.4V19h16V8.4Z"/></svg></a>
-    </div>
-    <span class="mono">MIT &middot; 2026</span>
+<div class="err" id="err" hidden></div>
+
+<form class="console" id="form">
+  <div class="ratios" id="ratios" role="group" aria-label="Aspect ratio">
+    <button type="button" data-w="768"  data-h="768"  aria-pressed="false">1:1</button>
+    <button type="button" data-w="1152" data-h="768"  aria-pressed="false">3:2</button>
+    <button type="button" data-w="1280" data-h="768"  aria-pressed="true">5:3</button>
+    <button type="button" data-w="1024" data-h="576"  aria-pressed="false">16:9</button>
+    <button type="button" data-w="768"  data-h="1152" aria-pressed="false">2:3</button>
+    <button type="button" data-w="576"  data-h="1024" aria-pressed="false">9:16</button>
   </div>
-</footer>
+  <div class="entry">
+    <span class="caret" aria-hidden="true">&rsaquo;</span>
+    <textarea id="prompt" rows="1" spellcheck="false" enterkeyhint="go"
+      placeholder="a colossal derelict starship drifting past a gas giant, by greg rutkowski and john berkey, Trending on artstation."></textarea>
+    <button id="go" type="submit"><span lang="en">Generate</span><span lang="tr">Üret</span></button>
+  </div>
+</form>
+
+<div class="progress"><i id="bar"></i></div>
 
 <script src="app.js"></script>
 <script defer src="https://oa-c.cobanov.run/oa.js"></script>

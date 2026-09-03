@@ -1,8 +1,16 @@
-// neodisco arayüzü: form -> /api/generate, sonra iş bitene kadar yoklama.
+// Tek ekran: oran seç, prompt yaz, üret. Geri kalan her ayar Disco'nun kendi
+// varsayılanlarında sabit, çünkü bu sayfanın işi ayar yapmak değil resmi göstermek.
 const $ = (id) => document.getElementById(id);
 const root = document.documentElement;
 
-/* dil */
+const FIXED = {
+  image_size: 512, steps: 250, skip_steps: 10, eta: 0.8, clamp_max: 0.05,
+  clip_scale: 5000, range_scale: 150, tv_scale: 0, sat_scale: 0, cutn_batches: 4,
+  cut_overview: '[12]*400+[4]*600', cut_innercut: '[4]*400+[12]*600',
+  cut_icgray_p: '[0.2]*400+[0]*600', inner_size_pow: 1,
+  clip_models: ['ViTB32', 'ViTB16', 'RN50'], use_secondary: true, seed: -1,
+};
+
 const langBtn = $('lang');
 const setLang = (lang) => {
   if (lang === 'tr') root.setAttribute('data-lang', 'tr'); else root.removeAttribute('data-lang');
@@ -14,52 +22,46 @@ setLang(root.getAttribute('data-lang') === 'tr' ? 'tr' : 'en');
 langBtn.addEventListener('click', () => setLang(root.lang === 'tr' ? 'en' : 'tr'));
 const t = (en, tr) => (root.lang === 'tr' ? tr : en);
 
-/* durum */
-const state = $('state'), bar = $('bar'), nums = $('nums'), stage = $('stage');
-const errorBox = $('error'), gallery = $('gallery');
-const download = $('download'), settingsLink = $('settings_link');
+let size = { w: 1280, h: 768 };
+const ratios = $('ratios');
+ratios.addEventListener('click', (e) => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  [...ratios.children].forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+  size = { w: Number(b.dataset.w), h: Number(b.dataset.h) };
+  $('m-dim').textContent = `${size.w}×${size.h}`;
+});
+
+const prompt = $('prompt');
+const grow = () => { prompt.style.height = 'auto'; prompt.style.height = Math.min(prompt.scrollHeight, 96) + 'px'; };
+prompt.addEventListener('input', grow);
+prompt.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('form').requestSubmit(); }
+});
+
+const showError = (msg) => {
+  const box = $('err');
+  box.textContent = msg || '';
+  box.hidden = !msg;
+};
+
 let polling = null;
 
-const setState = (s, label) => { state.dataset.state = s; state.textContent = label || s; };
-const showError = (msg) => {
-  errorBox.innerHTML = '';
-  if (!msg) return;
-  const d = document.createElement('div');
-  d.className = 'error-box';
-  d.textContent = msg;
-  errorBox.appendChild(d);
-};
-
-const show = (id) => {
-  stage.innerHTML = '';
+function reveal(id, job) {
+  const frame = $('frame');
   const img = new Image();
-  img.src = `/api/result/${id}.png?t=${Date.now()}`;
   img.alt = t('Generated image', 'Üretilen görüntü');
-  stage.appendChild(img);
-  download.href = img.src;
-  download.download = `neodisco-${id}.png`;
-  download.hidden = false;
-  settingsLink.href = `/api/result/${id}.json`;
-  settingsLink.hidden = false;
-  [...gallery.querySelectorAll('button')].forEach((b) => b.setAttribute('aria-current', String(b.dataset.id === id)));
-};
-
-async function refreshGallery(currentId) {
-  const jobs = await fetch('/api/jobs').then((r) => r.json()).catch(() => []);
-  gallery.innerHTML = '';
-  jobs.filter((j) => j.state === 'done').slice(0, 18).forEach((j) => {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.dataset.id = j.id;
-    b.setAttribute('aria-current', String(j.id === currentId));
-    b.title = `${j.seed}`;
-    const img = new Image();
-    img.src = `/api/result/${j.id}.png`;
-    img.alt = '';
-    b.appendChild(img);
-    b.addEventListener('click', () => show(j.id));
-    gallery.appendChild(b);
+  img.addEventListener('load', () => {
+    const ph = $('placeholder');
+    if (ph) ph.remove();
+    const old = frame.querySelector('img');
+    if (old) old.remove();
+    frame.appendChild(img);
+    requestAnimationFrame(() => { img.classList.add('in'); frame.classList.add('marked'); });
   });
+  img.src = `/api/result/${id}.png?t=${Date.now()}`;
+  $('m-seed').textContent = job.seed;
+  $('m-time').textContent = `${Math.round(job.elapsed)}s`;
 }
 
 function watch(id) {
@@ -68,79 +70,57 @@ function watch(id) {
     const j = await fetch(`/api/job/${id}`).then((r) => r.json()).catch(() => null);
     if (!j) return;
     if (j.state === 'queued') {
-      setState('queued', t(`queued · ${j.position}`, `sırada · ${j.position}`));
-      nums.textContent = '';
+      $('state').textContent = t(`queued ${j.position}`, `sırada ${j.position}`);
     } else if (j.state === 'running') {
-      const pct = j.total ? Math.round((j.step / j.total) * 100) : 0;
-      setState('running', t('running', 'çalışıyor'));
-      bar.style.width = pct + '%';
-      nums.textContent = `${j.step}/${j.total} · ${Math.round(j.elapsed)}s`;
+      $('state').textContent = t('rendering', 'üretiliyor');
+      $('bar').style.width = (j.total ? (j.step / j.total) * 100 : 0) + '%';
+      $('m-step').textContent = `${j.step}/${j.total}`;
+      $('m-time').textContent = `${Math.round(j.elapsed)}s`;
     } else if (j.state === 'done') {
       clearInterval(polling);
-      setState('done', t('done', 'bitti'));
-      bar.style.width = '100%';
-      nums.textContent = `${Math.round(j.elapsed)}s · seed ${j.seed}`;
-      show(j.id);
-      refreshGallery(j.id);
+      $('state').textContent = t('done', 'bitti');
+      $('bar').style.width = '100%';
+      $('m-step').textContent = j.total;
+      reveal(j.id, j);
       $('go').disabled = false;
+      setTimeout(() => { $('bar').style.width = '0'; }, 900);
     } else if (j.state === 'error') {
       clearInterval(polling);
-      setState('error', t('error', 'hata'));
-      bar.style.width = '0';
+      $('state').textContent = t('error', 'hata');
+      $('bar').style.width = '0';
       showError(j.error);
       $('go').disabled = false;
     }
   }, 1200);
 }
 
-async function uploadFile(input) {
-  if (!input.files || !input.files[0]) return null;
-  const fd = new FormData();
-  fd.append('file', input.files[0]);
-  const r = await fetch('/api/upload', { method: 'POST', body: fd });
-  if (!r.ok) throw new Error(t('upload failed', 'yükleme başarısız'));
-  return (await r.json()).path;
-}
-
 $('form').addEventListener('submit', async (e) => {
   e.preventDefault();
   showError('');
+  const text = prompt.value.trim() || prompt.placeholder;
   $('go').disabled = true;
-  setState('queued', t('submitting', 'gönderiliyor'));
-  bar.style.width = '0';
+  $('state').textContent = t('sending', 'gönderiliyor');
+  $('bar').style.width = '0';
   try {
-    const num = (id) => Number($(id).value);
-    const payload = {
-      prompt_text: $('prompt_text').value,
-      width: num('width'), height: num('height'), image_size: num('image_size'),
-      steps: num('steps'), skip_steps: num('skip_steps'), seed: num('seed'),
-      clamp_max: num('clamp_max'), eta: num('eta'), cutn_batches: num('cutn_batches'),
-      clip_scale: num('clip_scale'), range_scale: num('range_scale'),
-      tv_scale: num('tv_scale'), sat_scale: num('sat_scale'),
-      cut_overview: $('cut_overview').value, cut_innercut: $('cut_innercut').value,
-      cut_icgray_p: $('cut_icgray_p').value, inner_size_pow: num('inner_size_pow'),
-      init_scale: num('init_scale'),
-      use_secondary: $('use_secondary').checked, fp16: $('fp16').checked,
-      clip_models: [...document.querySelectorAll('input[name="clip"]:checked')].map((c) => c.value),
-    };
-    const initPath = await uploadFile($('init_image'));
-    if (initPath) payload.init_image = initPath;
-    const jsonFile = $('disco_json').files[0];
-    if (jsonFile) payload.disco_json = await jsonFile.text();
-
     const res = await fetch('/api/generate', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...FIXED, prompt_text: text, width: size.w, height: size.h }),
     });
     if (!res.ok) {
-      const detail = await res.json().catch(() => ({}));
-      throw new Error(detail.detail || res.statusText);
+      const d = await res.json().catch(() => ({}));
+      throw new Error(d.detail || res.statusText);
     }
     watch((await res.json()).id);
   } catch (err) {
-    setState('error', t('error', 'hata'));
+    $('state').textContent = t('error', 'hata');
     showError(err.message);
     $('go').disabled = false;
   }
 });
 
-refreshGallery(null);
+// Son biten işi ekrana koy, sayfa boş açılmasın.
+fetch('/api/jobs').then((r) => r.json()).then((jobs) => {
+  const last = (jobs || []).find((j) => j.state === 'done');
+  if (last) { reveal(last.id, last); $('state').textContent = t('done', 'bitti'); }
+}).catch(() => {});
