@@ -79,7 +79,7 @@ class PromptGuidance:
         return out
 
     def image_gradient(self, pixels, cut_batch=0, overview=None, inner=None,
-                       inner_grey_p=None, cutn_batches=1):
+                       inner_grey_p=None, cutn_batches=1, range_target=None):
         """d(loss) / d(pixels), accumulated over groups of cutouts.
 
         The cutouts and CLIP are where the activation memory goes, so they are done in
@@ -93,9 +93,10 @@ class PromptGuidance:
         # scored in one pass: the mean over the union equals the mean of per-draw means,
         # and the GPU sees a few large CLIP batches instead of many small ones.
         return self._one_draw(pixels, cut_batch, overview, inner, inner_grey_p,
-                              draws=max(int(cutn_batches), 1))
+                              draws=max(int(cutn_batches), 1), range_target=range_target)
 
-    def _one_draw(self, pixels, cut_batch, overview, inner, inner_grey_p, draws=1):
+    def _one_draw(self, pixels, cut_batch, overview, inner, inner_grey_p, draws=1,
+                  range_target=None):
         with torch.enable_grad():
             probe = pixels.detach().requires_grad_(True)
             cuts = torch.cat([self.cutouts(probe, overview=overview, inner=inner,
@@ -114,7 +115,11 @@ class PromptGuidance:
                     if self.tv_scale:
                         term = term + tv_loss(probe).sum() * self.tv_scale
                     if self.range_scale:
-                        term = term + range_loss(probe).sum() * self.range_scale
+                        # Disco measures the range penalty on the clean prediction (the
+                        # secondary model's output), not on the blend CLIP looks at.
+                        # `range_target` carries that prediction as a function of probe.
+                        target = range_target(probe) if range_target is not None else probe
+                        term = term + range_loss(target).sum() * self.range_scale
                     if self.sat_scale:
                         term = term + saturation_loss(probe).sum() * self.sat_scale
                 grad = grad + torch.autograd.grad(

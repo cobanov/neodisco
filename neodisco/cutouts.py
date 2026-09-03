@@ -69,7 +69,12 @@ class MakeCutouts(nn.Module):
         min_size = min(side_x, side_y, self.cut_size)
 
         if overview > 0:
-            pad_y, pad_x = (side_y - max_size) // 2, (side_x - max_size) // 2
+            # Pad the frame out to a square before showing it to CLIP, so a wide image is
+            # letterboxed rather than squashed. Getting this backwards (padding the wide
+            # axis) hands CLIP a horizontally compressed picture and quietly changes the
+            # gradient for every non-square render.
+            pad_y = (max(side_x, side_y) - side_y) // 2
+            pad_x = (max(side_x, side_y) - side_x) // 2
             padded = F.pad(image, (pad_x, pad_x, pad_y, pad_y), mode=self.padding_mode)
             whole = self._resize(padded)
             if overview <= 4:

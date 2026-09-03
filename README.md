@@ -240,6 +240,18 @@ sampler.
 obvious formulation and it divides by zero at the end of sampling. Take the gradient
 with respect to the estimate directly and divide by `sqrt(alpha_bar)` instead.
 
+**Do not hand-roll the DDIM step.** The update looks like four lines of algebra, and the
+trap is `alphas_cumprod_prev`: on a respaced schedule the previous step is not index
+`i - 1` of the original array. Getting it wrong does not blow up, it just darkens and
+over-saturates every render by a little, which is impossible to attribute without a
+reference to compare against. Call the vendored `ddim_sample` and pass guidance as a
+`cond_fn`, the way Disco did. With `eta=0` this file now reproduces
+`ddim_sample_loop` bit for bit.
+
+**Pad the frame to a square for the overview cuts, on the short axis.** Padding the wide
+axis instead letterboxes nothing and hands CLIP a horizontally squashed picture; every
+non-square render then gets a subtly wrong gradient for its whole run.
+
 **Cut and augment in [0, 1], not [-1, 1].** ColorJitter and the small additive noise in
 Disco's augmentation stack assume a [0, 1] image. Run them on [-1, 1] data and the colour
 augmentations misbehave, which quietly shifts the palette of every run.

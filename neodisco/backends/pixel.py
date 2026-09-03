@@ -57,7 +57,7 @@ def build_diffusion(timestep_respacing, diffusion_steps=1000, noise_schedule='li
         model_mean_type=gd.ModelMeanType.EPSILON,
         model_var_type=gd.ModelVarType.LEARNED_RANGE,
         loss_type=gd.LossType.MSE,
-        rescale_timesteps=True,
+        rescale_timesteps=False,
     )
 
 
@@ -183,125 +183,73 @@ class PixelBackend:
         overview_at = parse_schedule(cut_overview, n_steps)
         inner_at = parse_schedule(cut_innercut, n_steps)
         grey_at = parse_schedule(cut_icgray_p, n_steps)
+        alphas = diffusion.alphas_cumprod
 
         indices = list(range(n_steps - int(skip_steps)))[::-1]
         if init is not None:
             t_start = torch.tensor([indices[0]] * batch_size, device=self.device)
             x = diffusion.q_sample(init, t_start, noise=x)
+
+        # Guidance as a cond_fn, exactly the shape guided-diffusion's ddim_sample wants:
+        # cond_fn(x, t) returns grad(log p(prompt | x)), the descent direction on the CLIP
+        # loss, clamped. The vendored ddim_sample then folds it into eps via condition_score
+        # and takes the step with the reference DDIM math. Rolling that step by hand was
+        # what drifted the tonality: alphas_cumprod_prev on the respaced schedule is not
+        # alphas_cumprod[i-1], and the mismatch quietly darkened and over-saturated
+        # every run.
+        def make_cond_fn(i):
+            # The step index is bound here rather than read from the tensor: guided-diffusion
+            # hands cond_fn the timestep after _scale_timesteps, which on a respaced
+            # schedule is the original 1000-space value, not the index into our arrays.
+            def cond_fn(x_t, _t):
+                return _guidance_grad(x_t, i)
+            return cond_fn
+
+        def _guidance_grad(x_t, i):
+            if guidance is None:
+                return torch.zeros_like(x_t)
+            k = n_steps - 1 - i
+            ab = float(alphas[i])
+            s_t = (1 - ab) ** 0.5
+            with torch.enable_grad():
+                x_g = x_t.detach().requires_grad_(True)
+                if self.secondary is not None and use_secondary:
+                    cosine_t = alpha_sigma_to_t(torch.tensor(ab ** 0.5, device=self.device),
+                                                torch.tensor(s_t, device=self.device))
+                    with self._autocast():
+                        pred = self.secondary(x_g, cosine_t[None].repeat(x_g.shape[0])).pred
+                    pred = pred.float()
+                else:
+                    with self._autocast():
+                        og = diffusion.p_mean_variance(self.model, x_g,
+                                                       torch.tensor([i] * x_g.shape[0], device=self.device),
+                                                       clip_denoised=clip_denoised)
+                    pred = og['pred_xstart'].float()
+                x_in = pred * s_t + x_g * (1 - s_t) if disco_blend else pred
+                pixel_grad = guidance.image_gradient(
+                    x_in, cut_batch=cut_batch,
+                    overview=overview_at[k] if overview_at else None,
+                    inner=inner_at[k] if inner_at else None,
+                    inner_grey_p=grey_at[k] if grey_at else None,
+                    cutn_batches=cutn_batches,
+                    range_target=(lambda probe, _x=x_g.detach(), _s=s_t:
+                                  (probe - _x * (1 - _s)) / max(_s, 1e-3)))
+                grad = torch.autograd.grad(x_in, x_g, grad_outputs=pixel_grad)[0]
+            # Disco returns -grad(loss), clamped to clamp_max, as the score direction.
+            return -guidance.clamp(grad)
+
+        iterator = indices
         if progress:
             from tqdm import tqdm
-            indices = tqdm(indices, desc='sampling')
+            iterator = tqdm(indices, desc='sampling')
 
-        alphas = diffusion.alphas_cumprod
-        for i in indices:
+        for i in iterator:
             t = torch.tensor([i] * batch_size, device=self.device)
-            with self._autocast():
-                out = diffusion.p_mean_variance(self.model, x, t, clip_denoised=clip_denoised)
-            out = {k: (v.float() if torch.is_tensor(v) else v) for k, v in out.items()}
-            # Schedules are written front-to-back over the run, while i counts down.
-            k = n_steps - 1 - i
-
-            if guidance is not None:
-                # This follows Disco's cond_fn. Three details matter for the look and are
-                # easy to get wrong:
-                #
-                # 1. CLIP is shown a blend, x_in = x0_hat * s + x * (1 - s) with
-                #    s = sqrt(1 - alpha_bar), not the clean estimate alone. Early on that
-                #    is the estimate; late in the run it is mostly the sample itself.
-                # 2. The gradient goes back through the UNet (Disco used a small
-                #    "secondary" model as a cheap stand-in; here the real one is used).
-                # 3. The gradient is clamped to an RMS of clamp_max, and that clamped
-                #    value is what the sampler scales by the step's noise level. Rescaling
-                #    it to any other magnitude blows the colours out within a few dozen
-                #    steps; the first version of this file did exactly that.
-                ab = float(alphas[i])
-                s_t = (1 - ab) ** 0.5
-                if self.secondary is not None and use_secondary:
-                    # x_in = secondary.pred * s + x * (1 - s), gradient through the
-                    # secondary model. This is Disco's cond_fn with use_secondary_model on.
-                    with torch.enable_grad():
-                        x_g = x.detach().requires_grad_(True)
-                        alpha = torch.tensor(ab ** 0.5, device=self.device)
-                        sigma = torch.tensor(s_t, device=self.device)
-                        cosine_t = alpha_sigma_to_t(alpha, sigma)
-                        with self._autocast():
-                            pred = self.secondary(x_g, cosine_t[None].repeat(x_g.shape[0])).pred
-                        x_in = pred.float() * s_t + x_g * (1 - s_t)
-                        pixel_grad = guidance.image_gradient(
-                            x_in, cut_batch=cut_batch,
-                            overview=overview_at[k] if overview_at else None,
-                            inner=inner_at[k] if inner_at else None,
-                            inner_grey_p=grey_at[k] if grey_at else None,
-                            cutn_batches=cutn_batches)
-                        grad = torch.autograd.grad(x_in, x_g, grad_outputs=pixel_grad)[0]
-                elif through_model:
-                    with torch.enable_grad():
-                        x_g = x.detach().requires_grad_(True)
-                        with self._autocast():
-                            out_g = diffusion.p_mean_variance(self.model, x_g, t,
-                                                              clip_denoised=clip_denoised)
-                        x0g = out_g['pred_xstart'].float()
-                        x_in = x0g * s_t + x_g * (1 - s_t) if disco_blend else x0g
-                        pixel_grad = guidance.image_gradient(
-                            x_in, cut_batch=cut_batch,
-                            overview=overview_at[k] if overview_at else None,
-                            inner=inner_at[k] if inner_at else None,
-                            inner_grey_p=grey_at[k] if grey_at else None,
-                            cutn_batches=cutn_batches)
-                        grad = torch.autograd.grad(x_in, x_g, grad_outputs=pixel_grad)[0]
-                else:
-                    x_in = (out['pred_xstart'] * s_t + x * (1 - s_t)
-                            if disco_blend else out['pred_xstart'])
-                    pixel_grad = guidance.image_gradient(
-                        x_in, cut_batch=cut_batch,
-                        overview=overview_at[k] if overview_at else None,
-                        inner=inner_at[k] if inner_at else None,
-                        inner_grey_p=grey_at[k] if grey_at else None,
-                        cutn_batches=cutn_batches)
-                    # Jacobian of x_in with the noise prediction held fixed.
-                    grad = pixel_grad * ((1 - s_t) + s_t / max(ab, 1e-3) ** 0.5)
-
-                if guidance.clamp_max:
-                    cond = -guidance.clamp(grad)
-                else:
-                    # No clamp: fall back to a step-relative scale.
-                    grad_rms = grad.square().mean().sqrt().clamp(min=1e-12)
-                    cond = -grad * (guidance_strength * out['variance'].mean() / grad_rms)
-
-                if eta < 1:
-                    # guided-diffusion's condition_score: guidance enters through eps.
-                    eps = (x - ab ** 0.5 * out['pred_xstart']) / (1 - ab) ** 0.5
-                    eps = eps - (1 - ab) ** 0.5 * cond
-                    out['pred_xstart'] = (x - (1 - ab) ** 0.5 * eps) / ab ** 0.5
-                else:
-                    # condition_mean: guidance moves the posterior mean.
-                    out['mean'] = out['mean'] + out['variance'] * cond
-
-            if not torch.isfinite(out['pred_xstart']).all():
-                raise FloatingPointError(
-                    f'non-finite values at step {k}; rerun with fp16=False (--fp32) '
-                    'or a smaller frame')
-
-            noise = torch.randn(*shape, generator=g).to(self.device)
-            if i == 0:
-                x = out['pred_xstart']
-                continue
-
-            if eta <= 0:
-                # Deterministic DDIM.
-                ab, ab_prev = float(alphas[i]), float(alphas[i - 1])
-                eps = (x - ab ** 0.5 * out['pred_xstart']) / (1 - ab) ** 0.5
-                x = ab_prev ** 0.5 * out['pred_xstart'] + (1 - ab_prev) ** 0.5 * eps
-            elif eta >= 1:
-                x = out['mean'] + torch.exp(0.5 * out['log_variance']) * noise
-            else:
-                ab, ab_prev = float(alphas[i]), float(alphas[i - 1])
-                eps = (x - ab ** 0.5 * out['pred_xstart']) / (1 - ab) ** 0.5
-                sigma = (eta * ((1 - ab_prev) / (1 - ab)) ** 0.5
-                         * (1 - ab / ab_prev) ** 0.5)
-                x = (ab_prev ** 0.5 * out['pred_xstart']
-                     + max(1 - ab_prev - sigma ** 2, 0.0) ** 0.5 * eps
-                     + sigma * noise)
+            with torch.no_grad(), self._autocast():
+                out = diffusion.ddim_sample(self.model, x, t, clip_denoised=clip_denoised,
+                                            cond_fn=make_cond_fn(i) if guidance is not None else None,
+                                            eta=eta, model_kwargs={})
+            x = out['sample'].float()
 
         return x
 
