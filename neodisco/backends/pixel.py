@@ -157,6 +157,13 @@ class PixelBackend:
                 out['pred_xstart'] = shifted
                 out['mean'] = out['mean'] - grad * step_scale
 
+            if not torch.isfinite(out['pred_xstart']).all():
+                # fp16 attention over a large frame can overflow on some seeds. Fail here
+                # with a useful message rather than silently writing a blank image.
+                raise FloatingPointError(
+                    f'non-finite values at step {k}; rerun with fp16=False (--fp32) '
+                    'or a smaller frame')
+
             noise = torch.randn(*shape, generator=g).to(self.device)
             if i == 0:
                 x = out['pred_xstart']

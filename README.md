@@ -16,6 +16,13 @@ OpenAI's 256x256 unconditional ImageNet model from July 2021, on an RTX 5090 und
 PyTorch 2.11. Guidance strength 0.5, 2.0, 8.0, left to right. Prompt: *a fractal
 cathedral of glowing coral, intricate, dreamlike*.
 
+![a Disco settings file, run today](examples/cobanov-spaceship-1280x768.png)
+
+A settings file from 2022, run unchanged: `examples/cobanov-spaceship.json`. Crowson's
+512 model at 1280x768, three CLIP backbones, Disco's cutout schedules, `eta 0.8`, the
+original seed. *An enormous sci-fi spaceship attacking a massive deathstar in front of a
+black hole, by Greg Rutkowski and Thomas Kinkade; blue color scheme.*
+
 ## Why nothing else looks like this
 
 The Disco look was never a style you could ask a model for. It was the visible residue of
@@ -127,6 +134,11 @@ prompt pulls about as hard as the prior does, whatever the sampler.
 `eps = (x - sqrt(a) * x0) / sqrt(1 - a)` and then differentiating through it is the
 obvious formulation and it divides by zero at the end of sampling. Take the gradient with
 respect to the estimate directly and divide by `sqrt(alpha_bar)` instead.
+
+**fp16 can overflow on large frames.** The checkpoints were trained in fp16 and run
+fine that way at 512x512, but at widescreen sizes the attention over a few thousand
+tokens overflows on some seeds and the frame comes out blank. The sampler now stops with
+a clear error instead of writing the blank; pass `--fp32` for those runs.
 
 **Group cutout gradients in image space, not through the decoder.** Chunking the CLIP
 pass to save memory is necessary, but if each chunk backpropagates all the way through a
