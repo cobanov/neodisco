@@ -76,13 +76,21 @@ langBtn.addEventListener('click', () => { setLang(root.lang === 'tr' ? 'en' : 't
 // burada iş görmüyor: yüksekliği auto olan bir kapsayıcıda yüzde çözülemez.
 const fitPlate = () => {
   const box = $('plate-wrap');
+  const plate = $('plate');
   const size = shown || next;
-  const readout = $('readout').offsetHeight + 12;
+  // Plakanin disindaki her kardes (altyazi, ozet, hata kutusu) yer kapliyor. Tek tek
+  // saymak yerine hepsini gez: dar ekranda ozet acilip kapandikca sayi kendiliginden
+  // dogru kaliyor. Bu olcum plaka boyutunu etkilemedigi icin donguye girmez.
+  let taken = 0;
+  for (const el of box.children) {
+    if (el === plate) continue;
+    const h = el.offsetHeight;
+    if (h) taken += h + 12;
+  }
   const availW = box.clientWidth;
-  const availH = box.clientHeight - readout - ($('err').hidden ? 0 : $('err').offsetHeight + 12);
+  const availH = box.clientHeight - taken;
   if (availW <= 0 || availH <= 0) return;
   const scale = Math.min(availW / size.w, availH / size.h, 1);
-  const plate = $('plate');
   const w = Math.round(size.w * scale) + 'px';
   const h = Math.round(size.h * scale) + 'px';
   if (plate.style.width !== w) plate.style.width = w;
@@ -186,6 +194,12 @@ function showRecordLive(job, text) {
   ]);
   paintRecord(null);
   $('rec-actions').hidden = true;
+  // Prompt uretim boyunca konsolda duruyor, ozette tekrarlamak dar ekranda ayni metni
+  // iki kere yaziyordu.
+  paintDigest(null, [
+    [t('Seed', 'Tohum'), job.seed || '-'],
+    [t('Size', 'Ölçü'), fmtSize(job.width, job.height)],
+  ]);
 }
 
 /* ── plakanın altyazısı ───────────────────────────────────────────────────── */
@@ -206,6 +220,27 @@ function readout(pairs) {
   }
 }
 
+// Dar ekranin plaka alti ozeti. Genis ekranda CSS gizliyor, yine de doldurulur ki
+// pencere daraldiginda hazir olsun.
+function paintDigest(text, pairs) {
+  const d = $('digest');
+  if (!text && !(pairs && pairs.length)) { d.hidden = true; return; }
+  $('digest-prompt').textContent = text || '';
+  $('digest-prompt').hidden = !text;
+  const meta = $('digest-meta');
+  meta.textContent = '';
+  for (const [k, v] of pairs || []) {
+    if (v === null || v === undefined || v === '') continue;
+    const wrap = document.createElement('span');
+    const label = document.createElement('span');
+    label.className = 'label';
+    label.textContent = k + ' ';
+    wrap.append(label, document.createTextNode(String(v)));
+    meta.append(wrap);
+  }
+  d.hidden = false;
+}
+
 // Dil değişince ekranda yazan her şeyi tazele.
 function render() {
   // Altyazi yalnizca CANLI sayilari tasir: adim ve kalan sure. Compose'da olcu zaten
@@ -213,9 +248,15 @@ function render() {
   // Satir her modda yer kapliyor ki uretim baslayinca plaka sicramasin.
   if (mode === 'compose') {
     readout([]);
+    paintDigest(null, null);
     showRecordPending();
   } else if (mode === 'view' && current) {
     readout([]);
+    paintDigest((current.cfg?.prompts || []).join('\n'), [
+      [t('Seed', 'Tohum'), current.job.seed || current.cfg?.seed || '-'],
+      [t('Size', 'Ölçü'), fmtSize(current.job.width, current.job.height)],
+      [t('Time', 'Süre'), current.job.elapsed > 0 ? fmtClock(current.job.elapsed) : '-'],
+    ]);
     showRecordFor(current.job, current.cfg);
   }
   fitPlate();
@@ -288,7 +329,14 @@ const lockRatios = (on) => [...ratios.children].forEach((b) => { b.disabled = on
 /* ── prompt ───────────────────────────────────────────────────────────────── */
 
 const prompt = $('prompt');
-const grow = () => { prompt.style.height = 'auto'; prompt.style.height = Math.min(prompt.scrollHeight, 132) + 'px'; };
+// Tavan CSS'ten okunuyor: dar ekranda max-height 76 piksele iniyor ve buradaki sabit
+// bir sayi onu gecersiz kilardi (inline height, max-height'i asamaz ama tasan metni
+// gizler; ikisi ayrisinca kutu yanlis boyda kaliyordu).
+const grow = () => {
+  prompt.style.height = 'auto';
+  const cap = parseFloat(getComputedStyle(prompt).maxHeight) || 132;
+  prompt.style.height = Math.min(prompt.scrollHeight, cap) + 'px';
+};
 prompt.addEventListener('input', grow);
 prompt.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('form').requestSubmit(); }
@@ -428,6 +476,9 @@ $('form').addEventListener('submit', async (e) => {
   const text = prompt.value.trim() || EXAMPLES[0];
   prompt.value = text;
   grow();
+  // Gonderdikten sonra kutu bası gorunsun: imlec sonda oldugu icin uzun bir prompt
+  // ortasindan kesilmis gibi duruyordu.
+  prompt.scrollTop = 0;
 
   // Üretim boyunca seçilen oranın boş plakası durur, görüntü onun içinde açılır.
   toCompose();
@@ -479,9 +530,12 @@ const setDrawer = (open) => {
   $('rec-toggle').setAttribute('aria-expanded', String(open));
 };
 $('rec-toggle').addEventListener('click', () => setDrawer(root.getAttribute('data-record') !== 'open'));
-// Sahneye dokunmak çekmeceyi kapatır; açık kalıp konsolun üstünde durmasın.
-$('stage').addEventListener('pointerdown', () => {
-  if (root.getAttribute('data-record') === 'open') setDrawer(false);
+// Panelin ve düğmenin dışına dokunmak çekmeceyi kapatır: perdeye de, plakaya da,
+// şeride de. Yalnız sahneyi dinlemek yetmiyordu, perde sahnenin üstünde duruyor.
+addEventListener('pointerdown', (e) => {
+  if (root.getAttribute('data-record') !== 'open') return;
+  if (e.target.closest('#record, #rec-toggle')) return;
+  setDrawer(false);
 });
 addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && root.getAttribute('data-record') === 'open') setDrawer(false);

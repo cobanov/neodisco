@@ -65,26 +65,30 @@
         <div class="bar"><i id="bar"></i></div>
       </div>
       <p class="readout" id="readout" aria-live="polite"></p>
+      <div class="digest" id="digest" hidden>
+        <p class="digest-prompt" id="digest-prompt"></p>
+        <p class="digest-meta" id="digest-meta"></p>
+      </div>
       <div class="err" id="err" hidden></div>
     </div>
-
-    <form class="console" id="form">
-      <div class="ratios" id="ratios" role="group" aria-label="Aspect ratio">
-        <button type="button" data-w="768"  data-h="768"  aria-pressed="false">1:1</button>
-        <button type="button" data-w="1152" data-h="768"  aria-pressed="false">3:2</button>
-        <button type="button" data-w="1280" data-h="768"  aria-pressed="true">5:3</button>
-        <button type="button" data-w="1024" data-h="576"  aria-pressed="false">16:9</button>
-        <button type="button" data-w="768"  data-h="1152" aria-pressed="false">2:3</button>
-        <button type="button" data-w="576"  data-h="1024" aria-pressed="false">9:16</button>
-      </div>
-      <div class="entry">
-        <textarea id="prompt" rows="1" spellcheck="false" enterkeyhint="go"
-          placeholder="describe the picture, then name the artists"></textarea>
-        <button class="ex" id="ex" type="button"><span lang="en">Example</span><span lang="tr">Örnek</span></button>
-        <button id="go" type="submit"><span lang="en">Render</span><span lang="tr">Üret</span></button>
-      </div>
-    </form>
   </main>
+
+  <form class="console" id="form">
+    <div class="ratios" id="ratios" role="group" aria-label="Aspect ratio">
+      <button type="button" data-w="768"  data-h="768"  aria-pressed="false">1:1</button>
+      <button type="button" data-w="1152" data-h="768"  aria-pressed="false">3:2</button>
+      <button type="button" data-w="1280" data-h="768"  aria-pressed="true">5:3</button>
+      <button type="button" data-w="1024" data-h="576"  aria-pressed="false">16:9</button>
+      <button type="button" data-w="768"  data-h="1152" aria-pressed="false">2:3</button>
+      <button type="button" data-w="576"  data-h="1024" aria-pressed="false">9:16</button>
+    </div>
+    <div class="entry">
+      <textarea id="prompt" rows="1" spellcheck="false" enterkeyhint="go"
+        placeholder="describe the picture, then name the artists"></textarea>
+      <button class="ex" id="ex" type="button"><span lang="en">Example</span><span lang="tr">Örnek</span></button>
+      <button id="go" type="submit"><span lang="en">Render</span><span lang="tr">Üret</span></button>
+    </div>
+  </form>
 
   <aside class="record" id="record" aria-label="Render record">
     <div class="rec-head">
