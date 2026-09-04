@@ -1,5 +1,15 @@
-// Tek ekran: oran seç, prompt yaz, üret. Geri kalan her ayar Disco'nun kendi
-// varsayılanlarında sabit, çünkü bu sayfanın işi ayar yapmak değil resmi göstermek.
+// neodisco — tek ekran.
+//
+// İki mod var ve birbirine karışmazlar:
+//   compose  seçili orandaki boş plaka. Sayfa hep böyle açılır, çünkü yeni bir görüntü
+//            üretmeden önce bilmek istediğin şey onun ne boyda olacağı.
+//   view     biten bir işi seyretme. Görüntü kendi oranında durur ve künyesi sağda.
+// Oran düğmesi yalnız SIRADAKİ üretimin boyunu değiştirir ve seni compose'a döndürür;
+// ekranda duran bir görüntünün biçimine asla dokunmaz.
+//
+// Ayarların geri kalanı Disco'nun kendi varsayılanlarında sabit. Bu sayfanın işi ayar
+// yapmak değil, resmi göstermek; ama ne kullanıldığı künyede yazılı.
+
 const $ = (id) => document.getElementById(id);
 const root = document.documentElement;
 
@@ -11,19 +21,13 @@ const FIXED = {
   clip_models: ['ViTB32', 'ViTB16', 'RN50'], use_secondary: true, seed: -1,
 };
 
-const langBtn = $('lang');
-const setLang = (lang) => {
-  if (lang === 'tr') root.setAttribute('data-lang', 'tr'); else root.removeAttribute('data-lang');
-  root.lang = lang;
-  langBtn.textContent = lang === 'tr' ? 'EN' : 'TR';
-  try { localStorage.setItem('lang', lang); } catch (e) {}
+const CLIP_NAMES = {
+  ViTB32: 'ViT-B/32', ViTB16: 'ViT-B/16', ViTL14: 'ViT-L/14',
+  RN50: 'RN50', RN101: 'RN101', RN50x4: 'RN50x4', RN50x16: 'RN50x16', RN50x64: 'RN50x64',
 };
-setLang(root.getAttribute('data-lang') === 'tr' ? 'tr' : 'en');
-langBtn.addEventListener('click', () => setLang(root.lang === 'tr' ? 'en' : 'tr'));
-const t = (en, tr) => (root.lang === 'tr' ? tr : en);
 
-// Ornek promptlar: donemin kalibi, konu + sanatci isimleri + trending on artstation,
-// ikinci satirda ayri bir renk semasi. Isimler o zaman isin yarisini tasiyordu.
+// Dönemin kalıbı: konu + sanatçı isimleri + trending on artstation. İsimler o zaman
+// işin yarısını taşıyordu.
 const EXAMPLES = [
   'A colossal derelict starship drifting past a gas giant, galactic soldiers on the hull, by greg rutkowski and john berkey and thomas kinkade, Trending on artstation.',
   'An enormous war fleet emerging from hyperspace above a ringed planet, epic scale, by ralph mcquarrie and greg rutkowski and john harris, matte painting, Trending on artstation.',
@@ -37,78 +41,307 @@ const EXAMPLES = [
   'A lone walker crossing the shadow of an orbital ring at dusk, by simon stalenhag and john harris, Trending on artstation.',
 ];
 
-let size = { w: 1280, h: 768 };
-const ghost = $('ghost');
-// Konsol prompt uzadikca buyuyor. Sahnenin alt bosluğunu onun gercek yuksekligine
-// bagla, yoksa cerceve konsolun uzerine biner.
-const fitStage = () => {
-  const c = document.querySelector('.console');
-  const bottom = Math.round(window.innerHeight - c.getBoundingClientRect().top) + 28;
-  document.documentElement.style.setProperty('--stage-bottom', bottom + 'px');
+/* ── durum ────────────────────────────────────────────────────────────────── */
+
+// next: bir sonraki üretimin ölçüsü, oran düğmeleri bunu değiştirir.
+// shown: plakada duran görüntünün ölçüsü. İkisi ayrı tutulduğu için oran düğmesi
+// duran görüntüyü hiçbir koşulda bozamaz.
+let next = { w: 1280, h: 768 };
+let shown = null;
+let mode = 'compose';          // compose | busy | view
+let live = null;               // o an izlenen iş
+let current = null;            // künyesi gösterilen bitmiş iş
+let polling = null;
+
+/* ── dil ──────────────────────────────────────────────────────────────────── */
+
+const langBtn = $('lang');
+const setLang = (lang) => {
+  if (lang === 'tr') root.setAttribute('data-lang', 'tr'); else root.removeAttribute('data-lang');
+  root.lang = lang;
+  langBtn.textContent = lang === 'tr' ? 'EN' : 'TR';
+  try { localStorage.setItem('lang', lang); } catch (e) {}
 };
-const setGhost = () => {
-  fitStage();
-  // Kullanilabilir alani olcup orana sigan en buyuk kutuyu ver. Goruntu de ayni
-  // kutuya oturdugu icin cerceve ile sonuc birebir ayni yerde duruyor.
-  const stage = $('stage');
-  const cs = getComputedStyle(stage);
-  const availW = stage.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
-  const availH = stage.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+const t = (en, tr) => (root.lang === 'tr' ? tr : en);
+setLang(root.getAttribute('data-lang') === 'tr' ? 'tr' : 'en');
+// render() burada cagrilmaz: bu satir modulun tepesinde kosuyor ve render'in kullandigi
+// yardimcilar (fmtSize, showRecordPending) henuz tanimlanmadi. Ilk boyama en altta,
+// toCompose() ile yapiliyor; dil degisiminde de oradan tazeleniyor.
+langBtn.addEventListener('click', () => { setLang(root.lang === 'tr' ? 'en' : 'tr'); render(); });
+
+/* ── plaka ölçüsü ─────────────────────────────────────────────────────────── */
+
+// Kullanılabilir kutuyu ölç, orana sığan en büyüğünü plakaya ver. Hayalet de görüntü de
+// aynı hücreyi doldurduğu için biri diğerinin yerine birebir oturur. Yüzdeli max-height
+// burada iş görmüyor: yüksekliği auto olan bir kapsayıcıda yüzde çözülemez.
+const fitPlate = () => {
+  const box = $('plate-wrap');
+  const size = shown || next;
+  const readout = $('readout').offsetHeight + 12;
+  const availW = box.clientWidth;
+  const availH = box.clientHeight - readout - ($('err').hidden ? 0 : $('err').offsetHeight + 12);
+  if (availW <= 0 || availH <= 0) return;
   const scale = Math.min(availW / size.w, availH / size.h, 1);
-  const frame = $('frame');
-  frame.style.width = Math.round(size.w * scale) + 'px';
-  frame.style.height = Math.round(size.h * scale) + 'px';
-  $('ghost-dim').innerHTML = `${size.w} &times; ${size.h}`;
-  $('m-dim').textContent = `${size.w}×${size.h}`;
+  const plate = $('plate');
+  const w = Math.round(size.w * scale) + 'px';
+  const h = Math.round(size.h * scale) + 'px';
+  if (plate.style.width !== w) plate.style.width = w;
+  if (plate.style.height !== h) plate.style.height = h;
 };
-setGhost();
-addEventListener('resize', setGhost);
+
+if (window.ResizeObserver) new ResizeObserver(fitPlate).observe($('plate-wrap'));
+addEventListener('resize', fitPlate);
+
+/* ── künye ────────────────────────────────────────────────────────────────── */
+
+const fmtClock = (sec) => {
+  const n = Math.max(0, Math.round(sec));
+  return n >= 60 ? `${Math.floor(n / 60)}:${String(n % 60).padStart(2, '0')}` : `${n}s`;
+};
+const fmtSize = (w, h) => `${w} × ${h}`;
+
+const rows = (dl, pairs) => {
+  dl.textContent = '';
+  for (const [k, v, strong] of pairs) {
+    if (v === null || v === undefined || v === '') continue;
+    const dt = document.createElement('dt');
+    dt.textContent = k;
+    const dd = document.createElement('dd');
+    if (strong) dd.className = 'strong';
+    dd.textContent = v;
+    dl.append(dt, dd);
+  }
+};
+
+const clipList = (names) => (names || FIXED.clip_models).map((n) => CLIP_NAMES[n] || n).join('\n');
+
+// Künye her zaman dolu: compose'da sıradaki üretimin ayarları, üretim sırasında canlı
+// sayılar, bitince diskteki settings dosyası. Boş panel diye bir hâl yok.
+function paintRecord(cfg) {
+  const s = cfg || {};
+  // CLIP, Clamp, Eta, Cutn, Overview, Inner çevrilmiyor: bunlar Disco'nun settings
+  // dosyasındaki anahtar adları, Türkçeleştirmek tanınmalarını bozar.
+  const tech = [
+    [t('Model', 'Model'), `${s.image_size || FIXED.image_size} uncond`],
+    [t('Secondary', 'İkincil'), (s.use_secondary ?? FIXED.use_secondary) ? t('on', 'açık') : t('off', 'kapalı')],
+    ['CLIP', clipList(s.clip_models)],
+    [t('Scale', 'Ölçek'), s.clip_scale ?? FIXED.clip_scale],
+    [t('Range', 'Aralık'), s.range_scale ?? FIXED.range_scale],
+    ['Clamp', s.clamp_max ?? FIXED.clamp_max],
+    ['Eta', s.eta ?? FIXED.eta],
+    ['Cutn', s.cutn_batches ?? FIXED.cutn_batches],
+    ['Overview', s.cut_overview || FIXED.cut_overview],
+    ['Inner', s.cut_innercut || FIXED.cut_innercut],
+  ];
+  rows($('rec-tech'), tech);
+}
+
+function showRecordFor(job, cfg) {
+  const steps = (cfg?.steps ?? FIXED.steps) - (cfg?.skip_steps ?? FIXED.skip_steps);
+  $('rec-title').textContent = t('Record', 'Künye');
+  $('rec-id').textContent = job.id.slice(0, 8);
+  const p = $('rec-prompt');
+  p.classList.remove('empty');
+  p.textContent = (cfg?.prompts || []).join('\n') || t('no prompt stored', 'prompt kaydı yok');
+  rows($('rec-main'), [
+    [t('Size', 'Ölçü'), fmtSize(job.width, job.height), true],
+    [t('Seed', 'Tohum'), String(job.seed || cfg?.seed || '-'), true],
+    [t('Steps', 'Adım'), String(steps)],
+    [t('Time', 'Süre'), job.elapsed > 0 ? fmtClock(job.elapsed) : '-'],
+  ]);
+  paintRecord(cfg);
+  $('rec-actions').hidden = false;
+  $('rec-png').href = `/api/result/${job.id}.png`;
+  $('rec-png').setAttribute('download', `neodisco-${job.id.slice(0, 8)}.png`);
+}
+
+function showRecordPending() {
+  $('rec-title').textContent = t('Next render', 'Sıradaki üretim');
+  $('rec-id').textContent = '';
+  const p = $('rec-prompt');
+  p.classList.add('empty');
+  // Bu paragraf kunyenin prompt alani; compose'da henuz bir prompt yok, o yuzden
+  // bos halini yaziyor. "Henuz uretim yok" demek yanlisti: seritte gecmis durabilir.
+  p.textContent = t('Waiting for a prompt.', 'Bir prompt bekliyor.');
+  rows($('rec-main'), [
+    [t('Size', 'Ölçü'), fmtSize(next.w, next.h), true],
+    [t('Seed', 'Tohum'), t('random', 'rastgele')],
+    [t('Steps', 'Adım'), String(FIXED.steps - FIXED.skip_steps)],
+  ]);
+  paintRecord(null);
+  $('rec-actions').hidden = true;
+}
+
+function showRecordLive(job, text) {
+  $('rec-title').textContent = job.state === 'queued' ? t('In queue', 'Sırada') : t('Rendering', 'Üretiliyor');
+  $('rec-id').textContent = job.id.slice(0, 8);
+  const p = $('rec-prompt');
+  p.classList.remove('empty');
+  p.textContent = text;
+  rows($('rec-main'), [
+    [t('Size', 'Ölçü'), fmtSize(job.width, job.height), true],
+    [t('Seed', 'Tohum'), String(job.seed || '-'), true],
+    [t('Steps', 'Adım'), `${job.step} / ${job.total}`],
+    [t('Time', 'Süre'), job.elapsed > 0 ? fmtClock(job.elapsed) : '-'],
+  ]);
+  paintRecord(null);
+  $('rec-actions').hidden = true;
+}
+
+/* ── plakanın altyazısı ───────────────────────────────────────────────────── */
+
+function readout(pairs) {
+  const el = $('readout');
+  el.textContent = '';
+  for (const [k, v] of pairs) {
+    const wrap = document.createElement('span');
+    if (k) {
+      const label = document.createElement('span');
+      label.className = 'label';
+      label.textContent = k + ' ';
+      wrap.append(label);
+    }
+    wrap.append(document.createTextNode(v));
+    el.append(wrap);
+  }
+}
+
+// Dil değişince ekranda yazan her şeyi tazele.
+function render() {
+  // Altyazi yalnizca CANLI sayilari tasir: adim ve kalan sure. Compose'da olcu zaten
+  // plakanin ortasinda, view'da kunyede yaziyor; ucuncu bir kere yazmak gurultu olurdu.
+  // Satir her modda yer kapliyor ki uretim baslayinca plaka sicramasin.
+  if (mode === 'compose') {
+    readout([]);
+    showRecordPending();
+  } else if (mode === 'view' && current) {
+    readout([]);
+    showRecordFor(current.job, current.cfg);
+  }
+  fitPlate();
+}
+
+/* ── modlar ───────────────────────────────────────────────────────────────── */
+
+function clearPeek() {
+  const peek = $('peek');
+  peek.classList.remove('on');
+  peek.removeAttribute('src');
+}
+
+function dropShot() {
+  const old = $('plate').querySelector('img.shot');
+  if (old) old.remove();
+}
+
+// Boş plakaya dön: seçili oran, hedef ölçü yazılı, künyede sıradaki üretimin ayarları.
+function toCompose() {
+  mode = 'compose';
+  shown = null;
+  current = null;
+  dropShot();
+  clearPeek();
+  $('ghost').hidden = false;
+  $('ghost-dim').innerHTML = `${next.w} &times; ${next.h}`;
+  [...$('rail').children].forEach((b) => b.classList.remove('on'));
+  render();
+}
+
+// Biten bir işi göster. Görüntü kendi ölçüsünde durur, künye o işin dosyasından gelir.
+async function toView(job, button) {
+  mode = 'view';
+  shown = { w: job.width, h: job.height };
+  const cfg = await fetch(`/api/result/${job.id}.json`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+  current = { job, cfg };
+  fitPlate();
+
+  const img = new Image();
+  img.className = 'shot';
+  img.alt = t('Generated image', 'Üretilen görüntü');
+  img.addEventListener('load', () => {
+    $('ghost').hidden = true;
+    clearPeek();
+    dropShot();
+    $('plate').appendChild(img);
+    requestAnimationFrame(() => img.classList.add('in'));
+  });
+  img.src = `/api/result/${job.id}.png?t=${job.finished || ''}`;
+
+  [...$('rail').children].forEach((b) => b.classList.remove('on'));
+  if (button) button.classList.add('on');
+  render();
+}
+
+/* ── oranlar ──────────────────────────────────────────────────────────────── */
 
 const ratios = $('ratios');
 ratios.addEventListener('click', (e) => {
   const b = e.target.closest('button');
-  if (!b) return;
+  if (!b || b.disabled) return;
   [...ratios.children].forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
-  size = { w: Number(b.dataset.w), h: Number(b.dataset.h) };
-  setGhost();
-  // Bir goruntu duruyorsa onu birakip cerceveye donmek yerine goruntu kalir; yeni oran
-  // bir sonraki uretimde devreye girer.
-  if (!$('frame').querySelector('img:not(#peek)')) ghost.hidden = false;
+  next = { w: Number(b.dataset.w), h: Number(b.dataset.h) };
+  toCompose();
 });
 
-$('dice').addEventListener('click', () => {
+const lockRatios = (on) => [...ratios.children].forEach((b) => { b.disabled = on; });
+
+/* ── prompt ───────────────────────────────────────────────────────────────── */
+
+const prompt = $('prompt');
+const grow = () => { prompt.style.height = 'auto'; prompt.style.height = Math.min(prompt.scrollHeight, 132) + 'px'; };
+prompt.addEventListener('input', grow);
+prompt.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('form').requestSubmit(); }
+});
+
+$('ex').addEventListener('click', () => {
   let pick = EXAMPLES[Math.floor(Math.random() * EXAMPLES.length)];
   if (pick === prompt.value) pick = EXAMPLES[(EXAMPLES.indexOf(pick) + 1) % EXAMPLES.length];
   prompt.value = pick;
   grow();
-  setGhost();
   prompt.focus();
-});
-
-const prompt = $('prompt');
-const grow = () => { prompt.style.height = 'auto'; prompt.style.height = Math.min(prompt.scrollHeight, 96) + 'px'; };
-prompt.addEventListener('input', () => { grow(); setGhost(); });
-if (window.ResizeObserver) new ResizeObserver(() => setGhost()).observe(document.querySelector('.console'));
-prompt.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('form').requestSubmit(); }
 });
 
 const showError = (msg) => {
   const box = $('err');
   box.textContent = msg || '';
   box.hidden = !msg;
+  fitPlate();
 };
 
-let polling = null;
+/* ── şerit ────────────────────────────────────────────────────────────────── */
 
-// Kalan sureyi dakika:saniye olarak yaz, 60 saniyenin altinda saniye olarak.
-const fmtLeft = (sec) => {
-  const n = Math.max(0, Math.round(sec));
-  return n >= 60 ? `${Math.floor(n / 60)}:${String(n % 60).padStart(2, '0')}` : `${n}s`;
-};
+const RAIL_MAX = 24;
 
-// Bulaniklik ilerlemeyle birlikte cozuluyor. Ustel egri, ilk karelerde yuksek tutup
-// sona dogru hizla siniri geciyor: erken adimlarda zaten okunacak bir sey yok.
+async function loadRail(activeId) {
+  const jobs = await fetch('/api/jobs').then((r) => r.json()).catch(() => null);
+  if (!jobs) return [];
+  const done = jobs.filter((j) => j.state === 'done' && j.width && j.height).slice(0, RAIL_MAX);
+  const rail = $('rail');
+  rail.textContent = '';
+  root.style.setProperty('--rail-w', done.length ? '112px' : '0px');
+  rail.hidden = done.length === 0;
+  for (const j of done) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.title = fmtSize(j.width, j.height);
+    if (j.id === activeId) b.classList.add('on');
+    const im = new Image();
+    im.src = `/api/thumb/${j.id}.jpg`;
+    im.alt = '';
+    im.loading = 'lazy';
+    b.appendChild(im);
+    b.addEventListener('click', () => toView(j, b));
+    rail.appendChild(b);
+  }
+  fitPlate();
+  return done;
+}
+
+/* ── üretim ───────────────────────────────────────────────────────────────── */
+
+// Bulanıklık ilerlemeyle çözülüyor. Üstel eğri, ilk karelerde yüksek tutup sona doğru
+// hızla sıfıra iniyor: erken adımlarda zaten okunacak bir şey yok.
 const peekBlur = (p) => 30 * Math.pow(1 - Math.min(Math.max(p, 0), 1), 1.7);
 
 const setPeek = (id, n, p) => {
@@ -118,119 +351,45 @@ const setPeek = (id, n, p) => {
     peek.src = img.src;
     peek.style.filter = `blur(${peekBlur(p).toFixed(1)}px)`;
     peek.classList.add('on');
-    ghost.hidden = true;
+    $('ghost').hidden = true;
   };
   img.src = `/api/preview/${id}.jpg?n=${n}`;
 };
 
-const clearPeek = () => {
-  const peek = $('peek');
-  peek.classList.remove('on');
-  peek.removeAttribute('src');
-};
-
-function reveal(id, job) {
-  const frame = $('frame');
-  const img = new Image();
-  img.alt = t('Generated image', 'Üretilen görüntü');
-  img.addEventListener('load', () => {
-    ghost.hidden = true;
-    ghost.classList.remove('busy');
-    clearPeek();
-    // #peek de bir img: onizleme katmanini silmemek icin disarida birakiliyor.
-    const old = frame.querySelector('img:not(#peek)');
-    if (old) old.remove();
-    frame.appendChild(img);
-    requestAnimationFrame(() => { img.classList.add('in'); frame.classList.add('marked'); });
-  });
-  img.src = `/api/result/${id}.png?t=${Date.now()}`;
-  $('m-seed').textContent = job.seed || '-';
-  $('m-time').textContent = job.elapsed > 0 ? `${Math.round(job.elapsed)}s` : '-';
-}
-
-// Onceki uretimler soldaki seritte. Sunucu gecmisi diskten kuruyor, yani yeniden
-// baslatma bunlari silmiyor.
-const RAIL_MAX = 24;
-
-function pick(job, button) {
-  size = { w: job.width, h: job.height };
-  [...ratios.children].forEach((x) => x.setAttribute('aria-pressed',
-    String(Number(x.dataset.w) === job.width && Number(x.dataset.h) === job.height)));
-  setGhost();
-  clearPeek();
-  reveal(job.id, job);
-  $('state').textContent = t('done', 'bitti');
-  [...$('rail').children].forEach((b) => b.classList.remove('on'));
-  if (button) button.classList.add('on');
-}
-
-async function loadRail(activeId) {
-  const jobs = await fetch('/api/jobs').then((r) => r.json()).catch(() => null);
-  if (!jobs) return [];
-  const done = jobs.filter((j) => j.state === 'done' && j.width && j.height).slice(0, RAIL_MAX);
-  const rail = $('rail');
-  rail.textContent = '';
-  document.documentElement.style.setProperty('--rail-w', done.length ? '104px' : '0px');
-  rail.hidden = done.length === 0;
-  for (const j of done) {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.title = `${j.width}\u00d7${j.height}`;
-    if (j.id === activeId) b.classList.add('on');
-    const im = new Image();
-    im.src = `/api/thumb/${j.id}.jpg`;
-    im.alt = '';
-    im.loading = 'lazy';
-    b.appendChild(im);
-    b.addEventListener('click', () => pick(j, b));
-    rail.appendChild(b);
-  }
-  setGhost();
-  return done;
-}
-
-function watch(id) {
+function watch(id, text) {
   clearInterval(polling);
   let seenPreview = 0;
   polling = setInterval(async () => {
-    // Ag hatasi gecicidir, yoklamaya devam edilir. 404 kalicidir: sunucu yeniden
-    // baslamis ya da is gecmisten dusmustur, o kimlik bir daha donmez. Ayirmazsak
-    // 404 govdesinde state alani olmadigi icin asagidaki dallarin hicbiri tutmuyor,
-    // sayfa son sayilarda donup kaliyor ve Generate sonsuza kadar kapali kaliyordu.
+    // Ağ hatası geçicidir, yoklamaya devam edilir. 404 kalıcıdır: sunucu yeniden
+    // başlamış ya da iş geçmişten düşmüştür, o kimlik bir daha dönmez. Ayırmazsak 404
+    // gövdesinde state alanı olmadığı için hiçbir dal tutmuyor ve sayfa son sayılarda
+    // donup kalıyor, Üret düğmesi sonsuza kadar kapalı kalıyordu.
     let res;
     try { res = await fetch(`/api/job/${id}`); } catch (err) { return; }
     if (res.status === 404) {
       clearInterval(polling);
-      $('state').textContent = t('lost', 'kayıp');
-      $('bar').style.width = '0';
-      $('m-eta').textContent = '-';
-      clearPeek();
-      showError(t('That job is gone, the server restarted. Generate again.',
+      finish();
+      showError(t('That job is gone, the server restarted. Render again.',
                   'O iş kayboldu, sunucu yeniden başlamış. Yeniden üret.'));
-      ghost.classList.remove('busy');
-      $('ghost-note').textContent = t('write a prompt', 'bir prompt yaz');
-      $('go').disabled = false;
+      toCompose();
       return;
     }
     if (!res.ok) return;
     const j = await res.json().catch(() => null);
     if (!j || !j.state) return;
+    live = j;
+
     if (j.state === 'queued') {
-      $('state').textContent = t(`queued ${j.position}`, `sırada ${j.position}`);
-      $('ghost-note').textContent = t(`queued ${j.position}`, `sırada ${j.position}`);
+      readout([[t('In queue', 'Sırada'), String(j.position)]]);
+      showRecordLive(j, text);
     } else if (j.state === 'running') {
       const p = j.total ? j.step / j.total : 0;
-      $('state').textContent = t(`rendering ${Math.round(p * 100)}%`,
-                                 `üretiliyor %${Math.round(p * 100)}`);
       $('bar').style.width = p * 100 + '%';
-      $('m-step').textContent = `${j.step}/${j.total}`;
-      $('m-time').textContent = `${Math.round(j.elapsed)}s`;
-      $('m-eta').textContent = j.eta > 0 ? fmtLeft(j.eta) : '-';
-      // Tohum uretim baslar baslamaz belli; bekletirsek HUD bir onceki isi gosteriyor.
-      $('m-seed').textContent = j.seed || '-';
-      $('ghost-note').textContent = j.eta > 0
-        ? t(`about ${fmtLeft(j.eta)} left`, `yaklaşık ${fmtLeft(j.eta)} kaldı`)
-        : t('starting', 'başlıyor');
+      readout([
+        [t('Step', 'Adım'), `${j.step} / ${j.total}`],
+        [t('Left', 'Kalan'), j.eta > 0 ? fmtClock(j.eta) : '-'],
+      ]);
+      showRecordLive(j, text);
       if (j.preview && j.preview !== seenPreview) {
         seenPreview = j.preview;
         setPeek(id, j.preview, p);
@@ -239,65 +398,98 @@ function watch(id) {
       }
     } else if (j.state === 'done') {
       clearInterval(polling);
-      $('state').textContent = t('done', 'bitti');
       $('bar').style.width = '100%';
-      $('m-eta').textContent = '-';
-      $('m-step').textContent = j.total;
-      reveal(j.id, j);
-      loadRail(j.id);
-      $('go').disabled = false;
-      setTimeout(() => { $('bar').style.width = '0'; }, 900);
+      finish();
+      await toView(j, null);
+      loadRail(j.id).then(() => {
+        const first = $('rail').firstElementChild;
+        if (first) first.classList.add('on');
+      });
     } else if (j.state === 'error') {
       clearInterval(polling);
-      $('state').textContent = t('error', 'hata');
-      $('bar').style.width = '0';
-      $('m-eta').textContent = '-';
-      clearPeek();
+      finish();
       showError(j.error);
-      ghost.classList.remove('busy');
-      $('go').disabled = false;
+      toCompose();
     }
   }, 1200);
+}
+
+function finish() {
+  live = null;
+  $('plate').classList.remove('busy');
+  $('go').disabled = false;
+  lockRatios(false);
+  setTimeout(() => { $('bar').style.width = '0'; }, 900);
 }
 
 $('form').addEventListener('submit', async (e) => {
   e.preventDefault();
   showError('');
   const text = prompt.value.trim() || EXAMPLES[0];
+  prompt.value = text;
+  grow();
+
+  // Üretim boyunca seçilen oranın boş plakası durur, görüntü onun içinde açılır.
+  toCompose();
+  mode = 'busy';
   $('go').disabled = true;
-  $('state').textContent = t('sending', 'gönderiliyor');
+  lockRatios(true);
+  $('plate').classList.add('busy');
   $('bar').style.width = '0';
-  // Uretim boyunca secilen oranin bos cercevesi durur, goruntu onun icine acilir.
-  const stale = $('frame').querySelector('img:not(#peek)');
-  if (stale) stale.remove();
-  clearPeek();
-  $('frame').classList.remove('marked');
-  setGhost();
-  ghost.hidden = false;
-  ghost.classList.add('busy');
-  $('ghost-note').textContent = t('rendering', 'üretiliyor');
+  readout([[t('Sending', 'Gönderiliyor'), '']]);
+
   try {
     const res = await fetch('/api/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...FIXED, prompt_text: text, width: size.w, height: size.h }),
+      body: JSON.stringify({ ...FIXED, prompt_text: text, width: next.w, height: next.h }),
     });
     if (!res.ok) {
       const d = await res.json().catch(() => ({}));
       throw new Error(d.detail || res.statusText);
     }
-    watch((await res.json()).id);
+    const job = await res.json();
+    showRecordLive(job, text);
+    watch(job.id, text);
   } catch (err) {
-    $('state').textContent = t('error', 'hata');
+    finish();
     showError(err.message);
-    ghost.classList.remove('busy');
-    $('go').disabled = false;
+    toCompose();
   }
 });
 
-// Son biten işi ekrana koy, sayfa boş açılmasın.
-loadRail().then((done) => {
-  const last = done[0];
-  if (!last) return;
-  pick(last, $('rail').firstElementChild);
+/* ── künye eylemleri ──────────────────────────────────────────────────────── */
+
+$('rec-copy').addEventListener('click', async (e) => {
+  if (!current) return;
+  const btn = e.currentTarget;
+  const before = btn.innerHTML;
+  try {
+    await navigator.clipboard.writeText(JSON.stringify(current.cfg, null, 2));
+    btn.textContent = t('Copied', 'Kopyalandı');
+  } catch (err) {
+    btn.textContent = t('Copy failed', 'Kopyalanmadı');
+  }
+  setTimeout(() => { btn.innerHTML = before; }, 1600);
 });
+
+// Dar ekranda künye bir çekmece.
+const setDrawer = (open) => {
+  root.setAttribute('data-record', open ? 'open' : 'closed');
+  $('rec-toggle').setAttribute('aria-expanded', String(open));
+};
+$('rec-toggle').addEventListener('click', () => setDrawer(root.getAttribute('data-record') !== 'open'));
+// Sahneye dokunmak çekmeceyi kapatır; açık kalıp konsolun üstünde durmasın.
+$('stage').addEventListener('pointerdown', () => {
+  if (root.getAttribute('data-record') === 'open') setDrawer(false);
+});
+addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && root.getAttribute('data-record') === 'open') setDrawer(false);
+});
+
+/* ── açılış ───────────────────────────────────────────────────────────────── */
+
+// Sayfa boş plakayla açılır. Son üretim şeridin ilk karesinde duruyor, bir tık uzakta;
+// ama ekranı o kaplamaz, çünkü buraya yeni bir şey üretmeye gelindi.
+toCompose();
+loadRail();

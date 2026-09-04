@@ -21,7 +21,7 @@
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
 <link rel="stylesheet" href="app.css">
 <script>
   try { if (localStorage.getItem('lang') === 'tr') { document.documentElement.setAttribute('data-lang','tr'); document.documentElement.lang='tr'; } } catch (e) {}
@@ -30,64 +30,80 @@
 <body>
 <a class="skip" href="#prompt"><span lang="en">Skip to prompt</span><span lang="tr">Prompt'a geç</span></a>
 
-<div class="hud hud-tl">
-  <b>neodisco</b>
-  <span class="key">512 UNCOND</span>
-</div>
+<header class="masthead">
+  <a class="wordmark" href="https://github.com/cobanov/neodisco">
+    <svg viewBox="0 0 17 17" aria-hidden="true">
+      <rect x="0.5" y="0.5" width="16" height="16" rx="2" fill="none" stroke="currentColor" stroke-opacity="0.35"/>
+      <rect x="3" y="3" width="2.4" height="11" fill="currentColor" opacity="0.22"/>
+      <rect x="6" y="3" width="2.4" height="11" fill="currentColor" opacity="0.45"/>
+      <rect x="9" y="3" width="2.4" height="11" fill="currentColor" opacity="0.72"/>
+      <rect x="12" y="3" width="2" height="11" fill="currentColor"/>
+    </svg>
+    neodisco
+  </a>
+  <span class="chip">512 uncond</span>
 
-<div class="hud hud-tr">
-  <span><span class="key">STATE</span> <span class="val" id="state">idle</span></span>
+  <span class="spacer"></span>
+
+  <button class="rec-toggle" id="rec-toggle" type="button" aria-expanded="false" aria-controls="record">
+    <span lang="en">Record</span><span lang="tr">Künye</span>
+  </button>
+  <a class="nav-icon" href="https://github.com/cobanov/neodisco" title="cobanov/neodisco on GitHub" aria-label="cobanov/neodisco on GitHub">
+    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.4 7.4 0 0 1 2-.27c.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+  </a>
   <button class="lang-toggle" id="lang" type="button">TR</button>
-</div>
+</header>
 
-<div class="hud hud-bl" id="meta">
-  <span><span class="key">DIM</span> <span class="val" id="m-dim">1280&times;768</span></span>
-  <span><span class="key">STEP</span> <span class="val" id="m-step">250</span></span>
-  <span><span class="key">SEED</span> <span class="val" id="m-seed">-</span></span>
-  <span><span class="key">TIME</span> <span class="val" id="m-time">-</span>
-  <span><span class="key">LEFT</span> <span class="val" id="m-eta">-</span></span></span>
-</div>
+<div class="deck">
+  <aside class="rail" id="rail" aria-label="Earlier renders" hidden></aside>
 
-<aside class="rail" id="rail" aria-label="Recent renders" hidden></aside>
-
-<main class="stage" id="stage">
-  <div class="frame" id="frame">
-    <i aria-hidden="true"></i>
-    <img id="peek" alt="" aria-hidden="true">
-    <div class="ghost" id="ghost">
-      <span class="dim">
-        <em id="ghost-dim">1280 &times; 768</em>
-        <span id="ghost-note"><span lang="en">write a prompt</span><span lang="tr">bir prompt yaz</span></span>
-      </span>
+  <main class="stage" id="stage">
+    <div class="plate-wrap" id="plate-wrap">
+      <div class="plate" id="plate">
+        <div class="ghost" id="ghost"><span id="ghost-dim">1280 &times; 768</span></div>
+        <img id="peek" alt="" aria-hidden="true">
+        <div class="bar"><i id="bar"></i></div>
+      </div>
+      <p class="readout" id="readout" aria-live="polite"></p>
+      <div class="err" id="err" hidden></div>
     </div>
-  </div>
-</main>
 
-<div class="err" id="err" hidden></div>
+    <form class="console" id="form">
+      <div class="ratios" id="ratios" role="group" aria-label="Aspect ratio">
+        <button type="button" data-w="768"  data-h="768"  aria-pressed="false">1:1</button>
+        <button type="button" data-w="1152" data-h="768"  aria-pressed="false">3:2</button>
+        <button type="button" data-w="1280" data-h="768"  aria-pressed="true">5:3</button>
+        <button type="button" data-w="1024" data-h="576"  aria-pressed="false">16:9</button>
+        <button type="button" data-w="768"  data-h="1152" aria-pressed="false">2:3</button>
+        <button type="button" data-w="576"  data-h="1024" aria-pressed="false">9:16</button>
+      </div>
+      <div class="entry">
+        <textarea id="prompt" rows="1" spellcheck="false" enterkeyhint="go"
+          placeholder="describe the picture, then name the artists"></textarea>
+        <button class="ex" id="ex" type="button"><span lang="en">Example</span><span lang="tr">Örnek</span></button>
+        <button id="go" type="submit"><span lang="en">Render</span><span lang="tr">Üret</span></button>
+      </div>
+    </form>
+  </main>
 
-<form class="console" id="form">
-  <div class="ratios" id="ratios" role="group" aria-label="Aspect ratio">
-    <button type="button" data-w="768"  data-h="768"  aria-pressed="false">1:1</button>
-    <button type="button" data-w="1152" data-h="768"  aria-pressed="false">3:2</button>
-    <button type="button" data-w="1280" data-h="768"  aria-pressed="true">5:3</button>
-    <button type="button" data-w="1024" data-h="576"  aria-pressed="false">16:9</button>
-    <button type="button" data-w="768"  data-h="1152" aria-pressed="false">2:3</button>
-    <button type="button" data-w="576"  data-h="1024" aria-pressed="false">9:16</button>
-  </div>
-  <div class="entry">
-    <div class="field">
-      <span class="caret" aria-hidden="true">&rsaquo;</span>
-      <textarea id="prompt" rows="1" spellcheck="false" enterkeyhint="go"
-        placeholder="describe the picture, then the artists"></textarea>
+  <aside class="record" id="record" aria-label="Render record">
+    <div class="rec-head">
+      <span class="label" id="rec-title"></span>
+      <span class="id" id="rec-id"></span>
     </div>
-    <button class="icon-btn" id="dice" type="button" title="Example prompt" aria-label="Example prompt">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Zm3 3.6a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8Zm8 0a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8Zm-4 4a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8Zm-4 4a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8Zm8 0a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8Z"/></svg>
-    </button>
-    <button id="go" type="submit"><span lang="en">Generate</span><span lang="tr">Üret</span></button>
-  </div>
-</form>
-
-<div class="progress"><i id="bar"></i></div>
+    <p class="rec-prompt" id="rec-prompt"></p>
+    <div class="rec-group">
+      <dl class="rec-list" id="rec-main"></dl>
+    </div>
+    <div class="rec-group">
+      <dl class="rec-list" id="rec-tech"></dl>
+    </div>
+    <div class="rec-actions" id="rec-actions" hidden>
+      <a id="rec-png" download><span lang="en">Save PNG</span><span lang="tr">PNG indir</span></a>
+      <button id="rec-copy" type="button"><span lang="en">Copy JSON</span><span lang="tr">JSON kopyala</span></button>
+    </div>
+  </aside>
+</div>
 
 <script src="app.js"></script>
 <script defer src="https://oa-c.cobanov.run/oa.js"></script>
