@@ -55,159 +55,10 @@
     <div class="frame-rail frame-rail-right" aria-hidden="true">NEODISCO</div>
     <div class="frame-ticks" aria-hidden="true"></div>
     <main class="studio">
-      <section class="stage" id="stage" aria-label="Canvas">
-        <div class="canvas" id="canvas">
-          <div class="empty-state" id="empty">
-            <div
-              class="frame-preview"
-              id="frame-preview"
-              role="img"
-              aria-label="1280 by 768 pixel frame"
-            >
-              <span class="mono" id="frame-size">1280 × 768</span>
-              <span class="frame-hint">YOUR NEXT IMAGE</span>
-            </div>
-          </div>
-          <div class="empty-state waiting-state" id="waiting" hidden>
-            <h1>IMAGE IN PROGRESS</h1>
-            <p>Settle in. This can take a few minutes.</p>
-          </div>
-          <div class="image-area" id="image-area" hidden>
-            <img id="artwork" alt="" />
-            <div class="image-loading" id="image-loading" hidden>
-              Loading image…
-            </div>
-          </div>
-        </div>
-        <div class="canvas-status">
-          <div class="progress" id="progress" hidden>
-            <div class="progress-heading">
-              <span class="status-dot" aria-hidden="true"></span
-              ><span id="progress-title"></span
-              ><span id="progress-step" class="mono"></span
-              ><span id="progress-time" class="mono"></span>
-            </div>
-            <progress
-              id="bar"
-              max="240"
-              value="0"
-              aria-label="Render progress"
-            ></progress>
-          </div>
-          <div class="result-actions" id="result-actions" hidden>
-            <span id="result-meta" class="mono"></span
-            ><button id="rec-toggle" type="button" class="text-button">
-              Details</button
-            ><a id="rec-png" class="secondary" download>Save image ↓</a>
-          </div>
-        </div>
-      </section>
-      <form class="composer" id="form">
-        <fieldset>
-          <legend class="sr-only">Aspect ratio</legend>
-          <div class="ratios" id="ratios">
-            <button
-              type="button"
-              data-w="768"
-              data-h="768"
-              aria-pressed="false"
-              title="768 × 768"
-            >
-              <i style="aspect-ratio: 768/768" aria-hidden="true"></i
-              ><span>1:1</span>
-            </button>
-            <button
-              type="button"
-              data-w="1152"
-              data-h="768"
-              aria-pressed="false"
-              title="1152 × 768"
-            >
-              <i style="aspect-ratio: 1152/768" aria-hidden="true"></i
-              ><span>3:2</span>
-            </button>
-            <button
-              type="button"
-              data-w="1280"
-              data-h="768"
-              aria-pressed="true"
-              title="1280 × 768"
-            >
-              <i style="aspect-ratio: 1280/768" aria-hidden="true"></i
-              ><span>5:3</span>
-            </button>
-            <button
-              type="button"
-              data-w="1024"
-              data-h="576"
-              aria-pressed="false"
-              title="1024 × 576"
-            >
-              <i style="aspect-ratio: 1024/576" aria-hidden="true"></i
-              ><span>16:9</span>
-            </button>
-            <button
-              type="button"
-              data-w="768"
-              data-h="1152"
-              aria-pressed="false"
-              title="768 × 1152"
-            >
-              <i style="aspect-ratio: 768/1152" aria-hidden="true"></i
-              ><span>2:3</span>
-            </button>
-            <button
-              type="button"
-              data-w="576"
-              data-h="1024"
-              aria-pressed="false"
-              title="576 × 1024"
-            >
-              <i style="aspect-ratio: 576/1024" aria-hidden="true"></i
-              ><span>9:16</span>
-            </button>
-          </div>
-        </fieldset>
-        <div class="prompt-box">
-          <label for="prompt" class="sr-only">Describe your image</label
-          ><textarea
-            id="prompt"
-            rows="2"
-            required
-            maxlength="12000"
-            spellcheck="false"
-            aria-describedby="prompt-help"
-          ></textarea
-          ><button id="go" class="primary" type="submit">
-            <span id="go-label">Create</span
-            ><svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path
-                d="M5 12h14m-6-6 6 6-6 6"
-                stroke="currentColor"
-                stroke-width="1.5"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              />
-            </svg>
-          </button>
-        </div>
-        <div class="prompt-footer">
-          <button class="text-button" id="ex" type="button">
-            Try an example ↗</button
-          ><span class="hint mono" id="next-size">1280 × 768</span
-          ><span class="sr-only" id="prompt-help"
-            >Describe the scene and artistic style. Press Control or Command and
-            Enter to create.</span
-          >
-        </div>
-        <div class="error" id="err" role="alert" hidden></div>
-      </form>
-      <section class="history" aria-labelledby="history-title">
+      <aside class="history" aria-labelledby="history-title">
         <div class="history-heading">
           <h2 id="history-title">Creations</h2>
           <span id="history-count" class="mono"></span
-          ><button id="new" class="text-button" type="button">
-            ＋ New image</button
           ><button id="refresh" class="text-button" type="button">
             Refresh
           </button>
@@ -216,26 +67,178 @@
         <p class="history-empty" id="history-empty">
           Your creations will appear here.
         </p>
-      </section>
-      <p class="sr-only" id="announcement" role="status" aria-live="polite"></p>
+      </aside>
+      <div class="work-area">
+        <section class="stage" id="stage" aria-label="Canvas">
+          <div class="canvas" id="canvas">
+            <div class="empty-state" id="empty">
+              <div
+                class="frame-preview"
+                id="frame-preview"
+                role="img"
+                aria-label="1280 by 768 pixel frame"
+              >
+                <span class="mono" id="frame-size">1280 × 768</span>
+                <span class="frame-hint">YOUR NEXT IMAGE</span>
+              </div>
+            </div>
+            <div class="empty-state waiting-state" id="waiting" hidden>
+              <h1>IMAGE IN PROGRESS</h1>
+              <p>Settle in. This can take a few minutes.</p>
+            </div>
+            <div class="image-area" id="image-area" hidden>
+              <img id="artwork" alt="" />
+              <div class="image-loading" id="image-loading" hidden>
+                Loading image…
+              </div>
+            </div>
+          </div>
+          <div class="canvas-status">
+            <div class="progress" id="progress" hidden>
+              <div class="progress-heading">
+                <span class="status-dot" aria-hidden="true"></span
+                ><span id="progress-title"></span
+                ><span id="progress-step" class="mono"></span
+                ><span id="progress-time" class="mono"></span>
+              </div>
+              <progress
+                id="bar"
+                max="240"
+                value="0"
+                aria-label="Render progress"
+              ></progress>
+            </div>
+          </div>
+        </section>
+        <form class="composer" id="form">
+          <fieldset>
+            <legend class="sr-only">Aspect ratio</legend>
+            <div class="ratios" id="ratios">
+              <button
+                type="button"
+                data-w="768"
+                data-h="768"
+                aria-pressed="false"
+                title="768 × 768"
+              >
+                <i style="aspect-ratio: 768/768" aria-hidden="true"></i
+                ><span>1:1</span>
+              </button>
+              <button
+                type="button"
+                data-w="1152"
+                data-h="768"
+                aria-pressed="false"
+                title="1152 × 768"
+              >
+                <i style="aspect-ratio: 1152/768" aria-hidden="true"></i
+                ><span>3:2</span>
+              </button>
+              <button
+                type="button"
+                data-w="1280"
+                data-h="768"
+                aria-pressed="true"
+                title="1280 × 768"
+              >
+                <i style="aspect-ratio: 1280/768" aria-hidden="true"></i
+                ><span>5:3</span>
+              </button>
+              <button
+                type="button"
+                data-w="1024"
+                data-h="576"
+                aria-pressed="false"
+                title="1024 × 576"
+              >
+                <i style="aspect-ratio: 1024/576" aria-hidden="true"></i
+                ><span>16:9</span>
+              </button>
+              <button
+                type="button"
+                data-w="768"
+                data-h="1152"
+                aria-pressed="false"
+                title="768 × 1152"
+              >
+                <i style="aspect-ratio: 768/1152" aria-hidden="true"></i
+                ><span>2:3</span>
+              </button>
+              <button
+                type="button"
+                data-w="576"
+                data-h="1024"
+                aria-pressed="false"
+                title="576 × 1024"
+              >
+                <i style="aspect-ratio: 576/1024" aria-hidden="true"></i
+                ><span>9:16</span>
+              </button>
+            </div>
+          </fieldset>
+          <div class="prompt-box">
+            <label for="prompt" class="sr-only">Describe your image</label
+            ><textarea
+              id="prompt"
+              rows="2"
+              required
+              maxlength="12000"
+              spellcheck="false"
+              aria-describedby="prompt-help"
+            ></textarea
+            ><button id="go" class="primary" type="submit">
+              <span id="go-label">Create</span
+              ><svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path
+                  d="M5 12h14m-6-6 6 6-6 6"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+            </button>
+          </div>
+          <div class="prompt-footer">
+            <button class="text-button" id="ex" type="button">
+              Try an example ↗</button
+            ><button id="new" class="text-button" type="button">
+              ＋ New image</button
+            ><span class="hint mono" id="next-size">1280 × 768</span
+            ><span class="sr-only" id="prompt-help"
+              >Describe the scene and artistic style. Press Control or Command
+              and Enter to create.</span
+            >
+          </div>
+          <div class="error" id="err" role="alert" hidden></div>
+        </form>
+        <p
+          class="sr-only"
+          id="announcement"
+          role="status"
+          aria-live="polite"
+        ></p>
+      </div>
+      <aside class="record" id="record" aria-labelledby="rec-title">
+        <div class="record-heading">
+          <h2 id="rec-title">Next image</h2>
+          <span id="rec-id" class="mono"></span>
+        </div>
+        <p id="rec-prompt"></p>
+        <dl id="rec-main"></dl>
+        <div class="record-model">
+          <h3>Model &amp; guidance</h3>
+          <dl id="rec-tech"></dl>
+        </div>
+        <div class="result-actions" id="result-actions" hidden>
+          <a id="rec-png" class="secondary" download>Save image ↓</a>
+          <button id="reuse" class="secondary" type="button">
+            Reuse prompt ↗
+          </button>
+          <a id="rec-json" class="secondary" download>Settings JSON ↓</a>
+        </div>
+      </aside>
     </main>
-    <dialog id="record" aria-labelledby="rec-title">
-      <div class="dialog-head">
-        <h2 id="rec-title">Image details</h2>
-        <button id="rec-close" class="secondary" type="button">Close ✕</button>
-      </div>
-      <p id="rec-prompt"></p>
-      <dl id="rec-main"></dl>
-      <details>
-        <summary>Model &amp; guidance</summary>
-        <dl id="rec-tech"></dl>
-      </details>
-      <div class="dialog-actions">
-        <button id="reuse" class="secondary" type="button">
-          Reuse prompt ↗</button
-        ><a id="rec-json" class="secondary" download>Settings JSON ↓</a>
-      </div>
-    </dialog>
     <footer class="frame-credit">
       <a href="https://cobanov.dev">COBANOV.DEV</a><span>NEODISCO / 2026</span>
     </footer>

@@ -117,6 +117,7 @@ function compose() {
   viewVersion++;
   previewVersion++;
   current = null;
+  $("stage").style.setProperty("--canvas-ratio", next.w / next.h);
   $("empty").hidden = false;
   $("waiting").hidden = true;
   $("image-area").hidden = true;
@@ -124,6 +125,7 @@ function compose() {
   $("result-actions").hidden = true;
   $("progress").hidden = true;
   fitFrame();
+  paintPending();
   paintHistory();
 }
 function setSize(w, h) {
@@ -132,6 +134,7 @@ function setSize(w, h) {
   $("frame-size").textContent = `${w} × ${h}`;
   $("frame-preview").setAttribute("aria-label", `${w} by ${h} pixel frame`);
   fitFrame();
+  if (!current && !busy) paintPending();
   for (const b of $("ratios").children)
     b.setAttribute(
       "aria-pressed",
@@ -151,10 +154,14 @@ $("new").addEventListener("click", () => {
   compose();
   error("");
   $("prompt").value = "";
+  paintPending();
   grow();
   $("prompt").focus();
 });
-$("prompt").addEventListener("input", grow);
+$("prompt").addEventListener("input", () => {
+  grow();
+  if (!current && !busy) paintPending();
+});
 $("prompt").addEventListener("keydown", (e) => {
   if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !e.isComposing) {
     e.preventDefault();
@@ -165,6 +172,7 @@ $("ex").addEventListener("click", () => {
   const options = EXAMPLES.filter((x) => x !== $("prompt").value);
   $("prompt").value = options[Math.floor(Math.random() * options.length)];
   grow();
+  if (!current) paintPending();
   $("prompt").focus();
 });
 
@@ -179,10 +187,42 @@ function rows(id, pairs) {
     dl.append(dt, dd);
   }
 }
+function paintPending(job = null) {
+  $("rec-title").textContent = job
+    ? job.state === "running"
+      ? "Rendering"
+      : "In queue"
+    : "Next image";
+  $("rec-id").textContent = job?.id?.slice(0, 8) || "";
+  $("rec-prompt").textContent =
+    $("prompt").value.trim() || "Write a prompt to begin.";
+  rows("rec-main", [
+    ["Size", `${job?.width || next.w} × ${job?.height || next.h}`],
+    ["Seed", job?.seed ?? "Random"],
+    [
+      "Steps",
+      job
+        ? `${job.step || 0} / ${job.total || 240}`
+        : FIXED.steps - FIXED.skip_steps,
+    ],
+    ["Time", job?.elapsed > 0 ? fmtTime(job.elapsed) : "-"],
+  ]);
+  rows("rec-tech", [
+    ["Model", `${FIXED.image_size} uncond`],
+    ["CLIP", FIXED.clip_models.map((n) => CLIP_NAMES[n] || n).join("\n")],
+    ["CLIP guidance", FIXED.clip_scale],
+    ["Range", FIXED.range_scale],
+    ["Eta", FIXED.eta],
+    ["Clamp", FIXED.clamp_max],
+    ["Cut batches", FIXED.cutn_batches],
+  ]);
+  $("result-actions").hidden = true;
+}
+
 function paintResult() {
   const { job, cfg } = current;
-  $("result-meta").textContent =
-    `${job.width} × ${job.height}${job.elapsed > 0 ? ` · ${fmtTime(job.elapsed)}` : ""}`;
+  $("rec-title").textContent = "Image details";
+  $("rec-id").textContent = job.id.slice(0, 8);
   $("rec-prompt").textContent =
     cfg?.prompts?.join("\n") || "Prompt unavailable.";
   rows("rec-main", [
@@ -221,6 +261,7 @@ function paintResult() {
 }
 async function view(job) {
   if (busy) return;
+  $("stage").style.setProperty("--canvas-ratio", job.width / job.height);
   const version = ++viewVersion;
   previewVersion++;
   error("");
@@ -230,6 +271,14 @@ async function view(job) {
   $("image-area").hidden = false;
   $("image-loading").hidden = false;
   $("artwork").removeAttribute("src");
+  $("rec-title").textContent = "Loading image";
+  $("rec-id").textContent = job.id.slice(0, 8);
+  $("rec-prompt").textContent = "";
+  rows("rec-main", [
+    ["Size", `${job.width} × ${job.height}`],
+    ["Seed", job.seed],
+  ]);
+  rows("rec-tech", []);
   const config = fetch(`/api/result/${encodeURIComponent(job.id)}.json`)
     .then((r) => (r.ok ? r.json() : null))
     .catch(() => null);
@@ -259,6 +308,7 @@ async function view(job) {
 function paintHistory() {
   const rail = $("rail");
   const scroll = rail.scrollLeft;
+  const scrollTop = rail.scrollTop;
   rail.replaceChildren();
   $("history-count").textContent = jobs.length ? String(jobs.length) : "";
   $("history-empty").hidden = jobs.length > 0;
@@ -282,6 +332,7 @@ function paintHistory() {
     rail.append(b);
   }
   rail.scrollLeft = scroll;
+  rail.scrollTop = scrollTop;
 }
 async function loadHistory() {
   try {
@@ -299,22 +350,6 @@ async function loadHistory() {
   }
 }
 $("refresh").addEventListener("click", loadHistory);
-$("rec-toggle").addEventListener("click", () => {
-  if (current) $("record").showModal();
-});
-$("rec-close").addEventListener("click", () => $("record").close());
-$("record").addEventListener("click", (e) => {
-  if (e.target === $("record")) {
-    const r = $("record").getBoundingClientRect();
-    if (
-      e.clientX < r.left ||
-      e.clientX > r.right ||
-      e.clientY < r.top ||
-      e.clientY > r.bottom
-    )
-      $("record").close();
-  }
-});
 $("reuse").addEventListener("click", () => {
   if (!current?.cfg?.prompts) return;
   const { cfg, job } = current;
@@ -332,12 +367,16 @@ $("reuse").addEventListener("click", () => {
     )
   )
     setSize(job.width, job.height);
-  $("record").close();
   grow();
   $("prompt").focus();
 });
 
 function paintProgress(job) {
+  $("stage").style.setProperty(
+    "--canvas-ratio",
+    (job.width || next.w) / (job.height || next.h),
+  );
+  paintPending(job);
   $("progress").hidden = false;
   const running = job.state === "running";
   $("progress-title").textContent = connectionLost
