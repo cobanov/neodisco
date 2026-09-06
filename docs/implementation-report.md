@@ -2,6 +2,14 @@
 
 Date: 2026-09-06
 
+2026-09-07 audit addendum: the tests below establish modern-runtime stability and
+internal consistency, not equivalence to the original Disco notebook. The
+[original Disco fidelity audit](original-disco-fidelity-audit.md) found unresolved
+range-gradient, random-cutout, resize and schedule differences. Read that audit
+before treating the numerical-correctness phase below as original-compatibility acceptance.
+The subsequent [compatibility implementation](disco-compatibility-implementation.md)
+adds source oracles and fixes the supported still-image DDIM path.
+
 Baseline revision: `03d5792d75c7d68adab90b414047b4bedb6e99e7`
 
 This report separates CPU verification, real CUDA evidence and measured limitations.

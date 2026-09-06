@@ -189,7 +189,7 @@ class Runner:
             s['cut_batch'] = auto_cut_batch(policy.device)
         bank = self._bank(s['clip_models'], policy.device)
         cutouts = MakeCutouts(
-            bank.cut_size, inner_size_pow=float(s['inner_size_pow']),
+            bank.cut_size, inner_size_pow=1.0,
             augment=bool(s['augment']))
         guidance = PromptGuidance(
             bank, cutouts, s['prompts'], s['weights'], clip_scale=float(s['clip_scale']),
@@ -238,6 +238,7 @@ class Runner:
             width=int(s['width']), height=int(s['height']), eta=float(s['eta']),
             skip_steps=int(s['skip_steps']), cut_overview=s['cut_overview'],
             cut_innercut=s['cut_innercut'], cut_icgray_p=s['cut_icgray_p'],
+            cut_ic_pow=s['inner_size_pow'],
             cutn_batches=int(s['cutn_batches']), cut_batch=int(s['cut_batch']),
             clip_denoised=bool(s['clip_denoised']), use_secondary=bool(s['use_secondary']),
             init_image=s.get('init_image') or None,
@@ -247,6 +248,7 @@ class Runner:
         Image.fromarray(backend.to_uint8(pixels)[0]).save(self.out_dir / f'{job.id}.png')
         out = effective_record(dict(
             s, seed=seed, actual_steps=job.total,
+            guidance_nan_steps=list(getattr(backend, "guidance_nan_steps", [])),
             compile_mode_requested=s['compile_mode'],
             compile_mode_effective=backend.effective_compile_mode))
         job.settings = out

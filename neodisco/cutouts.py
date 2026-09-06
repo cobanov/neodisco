@@ -18,6 +18,8 @@ import torch.nn.functional as F
 from torchvision import transforms as T
 from torchvision.transforms import functional as TF
 
+from .resize import ResizeRightPlans
+
 
 class MakeCutouts(nn.Module):
     """Port of Disco Diffusion's MakeCutoutsDango, on modern torchvision."""
@@ -25,6 +27,7 @@ class MakeCutouts(nn.Module):
     def __init__(self, cut_size, overview=4, inner=32, inner_size_pow=0.5,
                  inner_grey_p=0.2, augment=True, padding_mode='constant'):
         super().__init__()
+        self.resize_plans = ResizeRightPlans()
         self.cut_size = cut_size
         self.overview = overview
         self.inner = inner
@@ -45,11 +48,12 @@ class MakeCutouts(nn.Module):
             T.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.1),
         ]) if augment else nn.Identity()
 
-    def _resize(self, x):
-        return F.interpolate(x, size=(self.cut_size, self.cut_size), mode='bicubic',
-                             align_corners=False, antialias=True)
+    def _resize(self, x, cut_size=None):
+        size = self.cut_size if cut_size is None else cut_size
+        return self.resize_plans(x, size)
 
-    def forward(self, image, overview=None, inner=None, inner_grey_p=None):
+    def forward(self, image, overview=None, inner=None, inner_grey_p=None,
+                cut_size=None, inner_size_pow=None):
         """image: (N, 3, H, W) in [-1, 1]. Returns (n_cuts, 3, cut, cut) in [0, 1].
 
         Cutting and augmenting happen on the [0, 1] image, as in Disco. ColorJitter and
@@ -62,11 +66,13 @@ class MakeCutouts(nn.Module):
         overview = self.overview if overview is None else int(overview)
         inner = self.inner if inner is None else int(inner)
         inner_grey_p = self.inner_grey_p if inner_grey_p is None else inner_grey_p
+        cut_size = self.cut_size if cut_size is None else int(cut_size)
+        power = self.inner_size_pow if inner_size_pow is None else float(inner_size_pow)
         image = image.add(1).div(2)
         cuts = []
         side_y, side_x = image.shape[2:4]
         max_size = min(side_x, side_y)
-        min_size = min(side_x, side_y, self.cut_size)
+        min_size = min(side_x, side_y, cut_size)
 
         if overview > 0:
             # Pad the frame out to a square before showing it to CLIP, so a wide image is
@@ -76,7 +82,7 @@ class MakeCutouts(nn.Module):
             pad_y = (max(side_x, side_y) - side_y) // 2
             pad_x = (max(side_x, side_y) - side_x) // 2
             padded = F.pad(image, (pad_x, pad_x, pad_y, pad_y), mode=self.padding_mode)
-            whole = self._resize(padded)
+            whole = self._resize(padded, cut_size)
             if overview <= 4:
                 variants = [whole, self.grey(whole), TF.hflip(whole), self.grey(TF.hflip(whole))]
                 cuts.extend(variants[:overview])
@@ -86,13 +92,13 @@ class MakeCutouts(nn.Module):
         grey_cutoff = int(inner_grey_p * inner)
         for i in range(inner):
             # A power law on the crop size, so small crops (fine detail) dominate.
-            size = int(torch.rand([]) ** self.inner_size_pow * (max_size - min_size) + min_size)
+            size = int(torch.rand([]) ** power * (max_size - min_size) + min_size)
             off_x = int(torch.randint(0, side_x - size + 1, ()))
             off_y = int(torch.randint(0, side_y - size + 1, ()))
             crop = image[:, :, off_y:off_y + size, off_x:off_x + size]
             if i <= grey_cutoff:
                 crop = self.grey(crop)
-            cuts.append(self._resize(crop))
+            cuts.append(self._resize(crop, cut_size))
 
         return self.augs(torch.cat(cuts))
 

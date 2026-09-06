@@ -32,8 +32,28 @@ image path while putting precision, randomness and failures behind explicit cont
 - **Reproducible reference mode.** One render owns and restores its RNG state. Strict
   mode moves stochastic cutout augmentation to CPU to avoid nondeterministic CUDA
   interpolation backward operations.
-- **Measured failures.** Non-finite gradients or samples stop the render with step and
-  runtime context instead of producing a successful black PNG.
+- **Recorded recovery and failures.** A NaN CLIP image gradient skips that guidance
+  step as in original Disco, with a warning and saved step list. Non-finite model
+  predictions, infinite gradients or invalid samples still stop the render.
+
+## Original Disco compatibility
+
+The current still-image path uses independent cutout draws per CLIP model at its native
+resolution, the original ResizeRight kernel, the notebook's timestep schedule and its
+unconditioned prediction for saved images. CLIP draws for each model are batched without
+sharing draws across models. Secondary guidance runs in fp32. The imported `range_scale`
+is preserved, but its contribution through the blended-image derivative is zero, matching
+the original notebook's graph. This deliberately preserves a reference quirk.
+
+The web example remains 250 configured steps minus 10 skipped, **240 actual iterations**.
+Power schedules such as `cut_ic_pow="[1]*400+[2]*600"` are supported. `--deterministic`
+means repeatable modern execution, not historical notebook emulation: OpenCLIP stays fp32,
+UNet precision remains configurable, and each render starts its own seed stream. A later
+image in an old notebook batch cannot be reconstructed from its base seed alone.
+
+See the [source audit](docs/original-disco-fidelity-audit.md) and
+[compatibility implementation report](docs/disco-compatibility-implementation.md) for
+oracle coverage, measured speed and remaining numerical differences.
 
 ## Install
 
@@ -121,11 +141,9 @@ neodisco-benchmark --profile representative \
   --runs 3 --warmup 1
 ```
 
-On the tested RTX 5090 stack, compiled steady renders measured 100.488 seconds versus
-132.894 seconds eager, a 24.38% reduction. Compilation added 59.312 seconds to the first
-render and paid back during the third total render. See the
-[implementation report](docs/implementation-report.md) for settings, memory and quality
-limits.
+Performance measurements from the earlier shared-cutout implementation do not describe
+the current compatibility path. The [compatibility report](docs/disco-compatibility-implementation.md)
+records fresh RTX 5090 timings with independent cutouts, ResizeRight and fp32 secondary.
 
 Each run directory contains PNGs and a machine-readable manifest with code provenance,
 package and GPU versions, checkpoint hashes, effective settings, actual executed steps,
@@ -152,4 +170,5 @@ distributed inference are outside this release.
 
 ## Licence
 
-MIT. Vendored guided-diffusion code is MIT, copyright OpenAI.
+MIT. Vendored guided-diffusion code is MIT, copyright OpenAI. Vendored ResizeRight
+is MIT, copyright Assaf Shocher; its pinned source and licence are included in the package.

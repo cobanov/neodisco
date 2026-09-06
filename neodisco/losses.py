@@ -5,8 +5,9 @@ unit sphere rather than plain cosine similarity, which keeps the gradient useful
 the image is already close to the prompt, so guidance keeps pushing detail in long runs
 instead of flattening out.
 
-`tv_loss` and `range_loss` are the guard rails: without them a long guided run drifts
-out of range and turns to noise.
+`tv_loss` and `range_loss` are regularizers. Their effect depends on the derivative
+path: original Disco computes range loss upstream of the blend, so that term contributes
+zero to the blend gradient. The standalone loss remains useful for other callers.
 """
 
 import torch

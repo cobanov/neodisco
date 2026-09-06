@@ -1,0 +1,4 @@
+ResizeRight by Assaf Shocher and contributors, MIT.
+https://github.com/assafshocher/ResizeRight
+Pinned revision: 510d4d5b67dccf4efdee9f311ed42609a71f17c5
+Only modification: package-relative interp_methods import.

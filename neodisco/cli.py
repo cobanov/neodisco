@@ -66,7 +66,7 @@ def build_parser():
     ap.add_argument("--overview-cuts", dest="cut_overview")
     ap.add_argument("--inner-cuts", dest="cut_innercut")
     ap.add_argument("--inner-grey-p", dest="cut_icgray_p")
-    ap.add_argument("--inner-size-pow", type=float)
+    ap.add_argument("--inner-size-pow", help="positive scalar or a Disco schedule")
     ap.add_argument("--cutn-batches", type=int)
     ap.add_argument("--cut-batch", default=None, help="auto or a positive cutout chunk size")
     ap.add_argument("--no-augment", action="store_true")
@@ -161,7 +161,7 @@ def build_pipeline(settings, ckpt=None, secondary_path=None):
 
     pairs = [disco_config.CLIP_NAMES[name] for name in effective["clip_models"]]
     bank = ClipBank(pairs, device=policy.device)
-    cutouts = MakeCutouts(bank.cut_size, inner_size_pow=effective["inner_size_pow"],
+    cutouts = MakeCutouts(bank.cut_size, inner_size_pow=1.0,
                           augment=effective["augment"])
     guidance = PromptGuidance(
         bank, cutouts, effective["prompts"], effective["weights"],
@@ -183,6 +183,7 @@ def sample_pipeline(guidance, backend, effective, progress=True, preview=None):
         seed=effective["seed"], cut_batch=effective["cut_batch"], eta=effective["eta"],
         width=effective["width"], height=effective["height"],
         cut_overview=effective["cut_overview"], cut_innercut=effective["cut_innercut"],
+        cut_ic_pow=effective["inner_size_pow"],
         cut_icgray_p=effective["cut_icgray_p"], cutn_batches=effective["cutn_batches"],
         clip_denoised=effective["clip_denoised"], skip_steps=effective["skip_steps"],
         use_secondary=effective["use_secondary"], init_image=effective["init_image"],
@@ -191,6 +192,7 @@ def sample_pipeline(guidance, backend, effective, progress=True, preview=None):
     effective["compile_mode_requested"] = effective["compile_mode"]
     effective["compile_mode_effective"] = backend.effective_compile_mode
     effective["actual_steps"] = effective["steps"] - effective["skip_steps"]
+    effective["guidance_nan_steps"] = list(getattr(backend, "guidance_nan_steps", []))
     return pixels
 
 

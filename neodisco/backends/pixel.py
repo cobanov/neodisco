@@ -24,7 +24,7 @@ import torch
 from torch.profiler import record_function
 
 from ..schedules import parse_schedule
-from ..runtime import autocast_context, render_rng
+from ..runtime import autocast_context, render_rng, fp32_context
 
 from ._guided_diffusion.respace import SpacedDiffusion, space_timesteps
 from ._guided_diffusion import gaussian_diffusion as gd
@@ -59,7 +59,7 @@ def build_diffusion(timestep_respacing, diffusion_steps=1000, noise_schedule='li
         model_mean_type=gd.ModelMeanType.EPSILON,
         model_var_type=gd.ModelVarType.LEARNED_RANGE,
         loss_type=gd.LossType.MSE,
-        rescale_timesteps=False,
+        rescale_timesteps=True,
     )
 
 
@@ -73,7 +73,7 @@ class PixelBackend:
             raise ValueError(f'image_size must be 256 or 512, got {image_size}')
         if secondary_path and not os.path.exists(secondary_path):
             raise FileNotFoundError(f'secondary model not found: {secondary_path}')
-        # bf16 autocast for the UNet and secondary model forward passes. Unlike fp16
+        # bf16 autocast for UNet forwards. Secondary guidance stays fp32 as in Disco. Unlike fp16
         # weights it does not overflow on wide frames, and on Ampere and newer it is
         # close to fp16 speed. None keeps everything in fp32.
         self.autocast_dtype = autocast_dtype
@@ -191,7 +191,7 @@ class PixelBackend:
                cut_overview=None, cut_innercut=None, cut_icgray_p=None, cutn_batches=1,
                clip_denoised=False, skip_steps=0, through_model=True, disco_blend=True,
                use_secondary=True, init_image=None, init_scale=0.0, progress=True,
-               preview=None, deterministic=False, finite_check=True):
+               preview=None, deterministic=False, finite_check=True, cut_ic_pow=None):
         """Sample an image.
 
         `width` and `height` may differ from the checkpoint's nominal size: the UNet is
@@ -226,17 +226,18 @@ class PixelBackend:
             raise ValueError('skip_steps must be at least 0 and less than steps')
         if not 0 <= float(eta) <= 1:
             raise ValueError('eta must be between 0 and 1')
-        # Disco respaces as 'ddim<N>' (every 1000//N-th timestep from 0), which is not the
-        # same set of timesteps as the plain '<N>' spacing.
-        # 'ddim<N>' needs N to divide 1000 (250, 200, 125, 100, 50...). For any other
-        # count fall back to the plain even spacing rather than refusing to run.
-        spacing = f'ddim{steps}' if 1000 % int(steps) == 0 else str(steps)
-        diffusion = build_diffusion(spacing)
+        # Disco adjusts the base process so every requested count has a DDIM stride.
+        base_steps = (1000 // steps) * steps
+        diffusion = build_diffusion(f'ddim{steps}', diffusion_steps=base_steps)
+        scaled_times = (torch.tensor(diffusion.timestep_map).float()
+                        * (1000.0 / base_steps)).tolist()
+        schedule_indices = [999 - int(t) for t in scaled_times]
         h = height or self.image_size
         w = width or self.image_size
         if h <= 0 or w <= 0 or h % 64 or w % 64:
             raise ValueError(f'width and height must be positive multiples of 64, got {w}x{h}')
         shape = (batch_size, 3, h, w)
+        self.guidance_nan_steps = []
         with render_rng(seed, self.device, deterministic=deterministic):
             x = torch.randn(shape, device=self.device)
             if guidance is not None:
@@ -253,15 +254,18 @@ class PixelBackend:
                     guidance.set_init(init, init_scale)
 
             n_steps = diffusion.num_timesteps
-            overview_at = parse_schedule(cut_overview, n_steps)
-            inner_at = parse_schedule(cut_innercut, n_steps)
-            grey_at = parse_schedule(cut_icgray_p, n_steps)
+            overview_at = parse_schedule(cut_overview, 1000)
+            inner_at = parse_schedule(cut_innercut, 1000)
+            grey_at = parse_schedule(cut_icgray_p, 1000)
+            power_at = parse_schedule(cut_ic_pow, 1000)
             alphas = diffusion.alphas_cumprod
 
             indices = list(range(n_steps - skip_steps))[::-1]
-            if init is not None:
+            if init is not None or skip_steps:
+                # The original fork noises a zero init when skipping without an image.
+                noise_init = init if init is not None else torch.zeros_like(x)
                 t_start = torch.tensor([indices[0]] * batch_size, device=self.device)
-                x = diffusion.q_sample(init, t_start, noise=x)
+                x = diffusion.q_sample(noise_init, t_start, noise=x)
 
         # Guidance as a cond_fn, exactly the shape guided-diffusion's ddim_sample wants:
         # cond_fn(x, t) returns grad(log p(prompt | x)), the descent direction on the CLIP
@@ -282,7 +286,7 @@ class PixelBackend:
             def _guidance_grad(x_t, i):
                 if guidance is None:
                     return torch.zeros_like(x_t)
-                k = n_steps - 1 - i
+                k = schedule_indices[i]
                 ab = float(alphas[i])
                 s_t = (1 - ab) ** 0.5
                 with torch.enable_grad():
@@ -290,15 +294,17 @@ class PixelBackend:
                     if self.secondary is not None and use_secondary:
                         cosine_t = alpha_sigma_to_t(torch.tensor(ab ** 0.5, device=self.device),
                                                     torch.tensor(s_t, device=self.device))
-                        with record_function('neodisco.secondary'), self._autocast():
+                        with record_function('neodisco.secondary'), fp32_context(self.device):
                             pred = self.secondary(x_g, cosine_t[None].repeat(x_g.shape[0])).pred
                         pred = pred.float()
                     else:
                         og = diffusion.p_mean_variance(
                             self._model_forward, x_g,
                             torch.tensor([i] * x_g.shape[0], device=self.device),
-                            clip_denoised=clip_denoised)
+                            clip_denoised=False)
                         pred = og['pred_xstart'].float()
+                    if not torch.isfinite(pred).all().item():
+                        raise FloatingPointError(f'non-finite guidance prediction at timestep {i}')
                     x_in = pred * s_t + x_g * (1 - s_t) if disco_blend else pred
                     pixel_grad = guidance.image_gradient(
                         x_in, cut_batch=cut_batch,
@@ -306,10 +312,20 @@ class PixelBackend:
                         inner=inner_at[k] if inner_at else None,
                         inner_grey_p=grey_at[k] if grey_at else None,
                         cutn_batches=cutn_batches,
-                        deterministic=deterministic,
-                        range_target=((lambda probe, _x=x_g.detach(), _s=s_t:
-                                      (probe - _x * (1 - _s)) / max(_s, 1e-3))
-                                      if disco_blend else None))
+                        deterministic=deterministic, allow_nan=disco_blend,
+                        inner_size_pow=power_at[k] if power_at else None,
+                        # pred is upstream of x_in in Disco, so range(pred) has zero
+                        # derivative with respect to x_in. Never invert the blend.
+                        range_target=(lambda probe: pred.detach()) if disco_blend else None)
+                    if disco_blend and torch.isnan(pixel_grad).any().item():
+                        # Original cond_fn skips only the invalid CLIP/image guidance,
+                        # then continues the otherwise finite diffusion step.
+                        if not self.guidance_nan_steps:
+                            warnings.warn('NaN image guidance: skipping affected steps as in '
+                                          'original Disco; recorded in guidance_nan_steps',
+                                          RuntimeWarning)
+                        self.guidance_nan_steps.append(len(indices) - i)
+                        return torch.zeros_like(x_t)
                     with record_function('neodisco.guidance_backbone_backward'):
                         grad = torch.autograd.grad(x_in, x_g, grad_outputs=pixel_grad)[0]
                 if finite_check and not torch.isfinite(grad).all().item():
@@ -342,7 +358,8 @@ class PixelBackend:
                         eta=eta, model_kwargs={})
                 x = out['sample'].float()
                 if finite_check:
-                    for name, value in (('sample', x), ('pred_xstart', out['pred_xstart'])):
+                    for name, value in (('sample', x), ('pred_xstart', out['pred_xstart']),
+                                        ('pred_xstart_uncond', out['pred_xstart_uncond'])):
                         if not torch.isfinite(value).all().item():
                             raise FloatingPointError(
                                 f'non-finite {name} at step {n}/{len(indices)} '
@@ -350,6 +367,6 @@ class PixelBackend:
                                 f'attention={self.attention_mode})'
                             )
                 if preview is not None:
-                    preview(n, out['pred_xstart'].float())
+                    preview(n, out['pred_xstart_uncond'].float())
 
-            return x
+            return out['pred_xstart_uncond'].float()

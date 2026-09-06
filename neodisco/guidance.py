@@ -64,10 +64,11 @@ class PromptGuidance:
             init = init.expand(pixels.shape[0], -1, -1, -1)
         return self._lpips(pixels.float(), init).sum() * self.init_scale
 
-    def _clip_term(self, cuts, deterministic=False):
+    def _clip_term(self, cuts, deterministic=False, model_idx=None):
         """Mean spherical distance between a set of cutouts and the prompts."""
         total = torch.zeros((), device=self.bank.device, dtype=torch.float32)
-        for i in range(len(self.bank.models)):
+        indices = range(len(self.bank.models)) if model_idx is None else [model_idx]
+        for i in indices:
             emb = self.bank.encode_cutouts(cuts, i, deterministic=deterministic)
             # (cuts, 1, d) against (1, prompts, d) -> (cuts, prompts)
             dists = spherical_dist_loss(emb.unsqueeze(1), self.embeddings[i].unsqueeze(0))
@@ -79,12 +80,12 @@ class PromptGuidance:
         """pixels: (N, 3, H, W) in [-1, 1], part of a live autograd graph."""
         with fp32_context(pixels.device):
             pixels = pixels.float()
-            cuts = self.cutouts(pixels)
             total = pixels.new_zeros(())
             for i in range(len(self.bank.models)):
+                cuts = self.cutouts(pixels, cut_size=self.bank.sizes[i])
                 emb = self.bank.encode_cutouts(cuts, i)
                 dists = spherical_dist_loss(emb.unsqueeze(1), self.embeddings[i].unsqueeze(0))
-                total = total + (dists * self.weights).sum(dim=1).mean()
+                total = total + (dists * self.weights).sum(dim=1).mean() * pixels.shape[0]
             out = total * self.clip_scale + self._perceptual_term(pixels)
             if self.tv_scale:
                 out = out + tv_loss(pixels).sum() * self.tv_scale
@@ -96,67 +97,56 @@ class PromptGuidance:
 
     def image_gradient(self, pixels, cut_batch=0, overview=None, inner=None,
                        inner_grey_p=None, cutn_batches=1, range_target=None,
-                       deterministic=False):
-        """d(loss) / d(pixels), accumulated over groups of cutouts.
+                       deterministic=False, inner_size_pow=None, allow_nan=False):
+        """Image gradient with Disco's model-outer, draw-inner random stream.
 
-        The cutouts and CLIP are where the activation memory goes, so they are done in
-        groups of `cut_batch` and their gradients summed. `pixels` is treated as a leaf:
-        callers that produced it from something else push this gradient the rest of the
-        way themselves.
+        Draws are independent per CLIP model at its native resolution. Only their
+        encoder evaluation is batched; averaging the union preserves the loss.
+        A detached range_target reproduces the notebook's upstream range penalty,
+        whose derivative with respect to the blended image is zero.
         """
-        # Disco redraws the cutouts several times per step and averages the gradients.
-        # One draw is a noisy estimate of "what the prompt wants here"; averaging a few
-        # steadies it without changing what it asks for. All draws are made up front and
-        # scored in one pass: the mean over the union equals the mean of per-draw means,
-        # and the GPU sees a few large CLIP batches instead of many small ones.
-        return self._one_draw(pixels, cut_batch, overview, inner, inner_grey_p,
-                              draws=max(int(cutn_batches), 1), range_target=range_target,
-                              deterministic=deterministic)
-
-    def _one_draw(self, pixels, cut_batch, overview, inner, inner_grey_p, draws=1,
-                  range_target=None, deterministic=False):
+        draws = max(int(cutn_batches), 1)
         with fp32_context(pixels.device), torch.enable_grad():
             probe = pixels.detach().float().requires_grad_(True)
-            # CUDA grid_sample backward is nondeterministic in the torchvision affine
-            # augmentation. Reference mode keeps the same transformations and random
-            # draws on CPU, then copies cutouts to the CLIP device through autograd.
-            cut_source = probe.cpu() if deterministic and probe.device.type == 'cuda' else probe
-            with record_function('neodisco.cutouts'):
-                cut_sets = [self.cutouts(cut_source, overview=overview, inner=inner,
-                                         inner_grey_p=inner_grey_p) for _ in range(draws)]
-            if not cut_sets or not cut_sets[0].shape[0]:
-                raise ValueError('guidance requires at least one cutout')
-            cuts = torch.cat(cut_sets)
-            n = cuts.shape[0]
-            size = cut_batch if cut_batch and cut_batch < n else n
-            starts = list(range(0, n, size))
             grad = torch.zeros_like(probe)
-
-            for k, begin in enumerate(starts):
-                chunk = cuts[begin:begin + size]
-                with record_function('neodisco.clip_guidance'):
-                    term = self._clip_term(chunk, deterministic=deterministic) * (chunk.shape[0] / n) * self.clip_scale
-                if k == len(starts) - 1:
-                    # These depend on the whole image rather than any one cutout, so they
-                    # ride along with the final group.
-                    if self.tv_scale:
-                        term = term + tv_loss(probe).sum() * self.tv_scale
-                    if self.range_scale:
-                        # Disco measures the range penalty on the clean prediction (the
-                        # secondary model's output), not on the blend CLIP looks at.
-                        # `range_target` carries that prediction as a function of probe.
-                        target = range_target(probe) if range_target is not None else probe
-                        term = term + range_loss(target).sum() * self.range_scale
-                    if self.sat_scale:
-                        term = term + saturation_loss(probe).sum() * self.sat_scale
-                    # Disco applies LPIPS to the blended x_in image in [-1, 1]. It is an
-                    # image loss, so it is added once rather than once per CLIP chunk or
-                    # cutout draw.
-                    term = term + self._perceptual_term(probe)
-                with record_function('neodisco.guidance_loss_backward'):
-                    grad = grad + torch.autograd.grad(
-                        term, probe, retain_graph=(k < len(starts) - 1))[0]
-        self.ensure_finite(grad, 'guidance image gradient')
+            for model_idx in range(len(self.bank.models)):
+                # A fresh transfer graph per model can be freed after its last chunk.
+                cut_source = probe.cpu() if deterministic and probe.device.type == 'cuda' else probe
+                with record_function('neodisco.cutouts'):
+                    cuts = torch.cat([
+                        self.cutouts(cut_source, overview=overview, inner=inner,
+                                     inner_grey_p=inner_grey_p,
+                                     cut_size=self.bank.sizes[model_idx],
+                                     inner_size_pow=inner_size_pow)
+                        for _ in range(draws)
+                    ])
+                n = cuts.shape[0]
+                if not n:
+                    raise ValueError('guidance requires at least one cutout')
+                size = cut_batch if cut_batch and cut_batch < n else n
+                for begin in range(0, n, size):
+                    chunk = cuts[begin:begin + size]
+                    last_chunk = begin + size >= n
+                    with record_function('neodisco.clip_guidance'):
+                        term = self._clip_term(chunk, deterministic=deterministic,
+                                               model_idx=model_idx)
+                        term = term * (chunk.shape[0] / n) * probe.shape[0] * self.clip_scale
+                    if last_chunk and model_idx == len(self.bank.models) - 1:
+                        if self.tv_scale:
+                            term = term + tv_loss(probe).sum() * self.tv_scale
+                        if self.range_scale:
+                            target = range_target(probe) if range_target is not None else probe
+                            term = term + range_loss(target).sum() * self.range_scale
+                        if self.sat_scale:
+                            term = term + saturation_loss(probe).sum() * self.sat_scale
+                        term = term + self._perceptual_term(probe)
+                    with record_function('neodisco.guidance_loss_backward'):
+                        grad = grad + torch.autograd.grad(
+                            term, probe, retain_graph=not last_chunk)[0]
+        # Pixel Disco may recover a NaN image gradient by skipping this guidance
+        # step, exactly as the notebook cond_fn does. Other callers remain strict.
+        if not (allow_nan and torch.isnan(grad).any().item()):
+            self.ensure_finite(grad, 'guidance image gradient')
         return grad
 
     def gradient(self, x, decode_fn, cut_batch=0, **cut_kwargs):

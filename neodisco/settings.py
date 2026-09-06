@@ -67,7 +67,7 @@ WEB_DEFAULTS = dict(
 )
 
 _FLOATS = ("eta", "clamp_max", "clip_scale", "tv_scale", "range_scale", "sat_scale",
-           "inner_size_pow", "init_scale")
+           "init_scale")
 _INTS = ("image_size", "width", "height", "steps", "skip_steps", "seed",
          "cutn_batches", "batch_size")
 
@@ -177,8 +177,9 @@ def validate_settings(s: Mapping[str, Any]) -> None:
             raise ValueError(f"{key} must be finite")
     if s["clamp_max"] < 0 or s["init_scale"] < 0:
         raise ValueError("clamp_max and init_scale must be non-negative")
-    if s["inner_size_pow"] <= 0:
-        raise ValueError("inner_size_pow must be positive")
+    for value in parse_schedule(s["inner_size_pow"], 1000):
+        if not math.isfinite(float(value)) or value <= 0:
+            raise ValueError("inner_size_pow must be finite and positive")
     if s["cutn_batches"] < 1 or s["batch_size"] < 1:
         raise ValueError("cutn_batches and batch_size must be positive")
     if s["cut_batch"] != "auto" and s["cut_batch"] < 1:
@@ -198,9 +199,9 @@ def validate_settings(s: Mapping[str, Any]) -> None:
     if not s["finite_check"]:
         raise ValueError("finite_check is mandatory for successful renders")
     schedules = {
-        "cut_overview": parse_schedule(s["cut_overview"], s["steps"]),
-        "cut_innercut": parse_schedule(s["cut_innercut"], s["steps"]),
-        "cut_icgray_p": parse_schedule(s["cut_icgray_p"], s["steps"]),
+        "cut_overview": parse_schedule(s["cut_overview"], 1000),
+        "cut_innercut": parse_schedule(s["cut_innercut"], 1000),
+        "cut_icgray_p": parse_schedule(s["cut_icgray_p"], 1000),
     }
     for value in schedules["cut_overview"] + schedules["cut_innercut"]:
         if not math.isfinite(float(value)) or int(value) != value or value < 0:
@@ -236,5 +237,11 @@ def init_reference(path: str | os.PathLike[str] | None) -> dict[str, str] | None
 def effective_record(settings: Mapping[str, Any]) -> dict[str, Any]:
     record = deepcopy(dict(settings))
     record["schema_version"] = SCHEMA_VERSION
+    record["sampling_semantics"] = "disco-2026-09-07"
+    record["range_gradient"] = "original-upstream-zero"
+    record["cutout_resize"] = "ResizeRight-510d4d5"
+    record["cutout_draws"] = "independent-per-model"
+    record["secondary_precision"] = "fp32"
+    record["seed_scope"] = "one-render"
     record["init_image_ref"] = init_reference(record.get("init_image"))
     return record

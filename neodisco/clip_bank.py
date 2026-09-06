@@ -50,7 +50,7 @@ class ClipBank(nn.Module):
 
     @property
     def cut_size(self):
-        """Cutouts are made at the largest input any model wants, then resized down."""
+        """Largest native resolution, used as the standalone cutout default."""
         return max(self.sizes)
 
     @torch.no_grad()

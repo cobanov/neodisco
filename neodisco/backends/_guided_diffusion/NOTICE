@@ -11,3 +11,7 @@ with pip alone.
 Local modification: nn.py routes activation checkpointing through PyTorch's maintained
 non-reentrant torch.utils.checkpoint API. The model architecture and checkpoint state
 dictionary keys are unchanged.
+
+Local modification (2026-09-07): ddim_sample additionally exposes pred_xstart_uncond.
+PixelBackend saves/displays this prediction, matching the kostarion fork used by
+Disco (ced66cb5b4dc58580701cc1519f5efd3b0436b27); guided sampling is unchanged.

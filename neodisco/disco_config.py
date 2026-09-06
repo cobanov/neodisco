@@ -38,6 +38,14 @@ def split_prompt(text):
 def from_mapping(cfg, frame=0):
     """Translate an original Disco mapping into canonical neodisco settings."""
 
+    if cfg.get('diffusion_sampling_mode', 'ddim') != 'ddim':
+        raise ValueError('only DDIM is supported; a PLMS config cannot be replayed as DDIM')
+    for name in ('perlin_init', 'fuzzy_prompt'):
+        if cfg.get(name, False):
+            raise ValueError(f'{name} is not supported by the still-image renderer')
+    if any(cfg.get('image_prompts', {}).values()):
+        raise ValueError('image_prompts guidance is not supported; init_image is a different feature')
+
     # text_prompts is keyed by the frame the prompt set starts at; take the last set
     # whose start is <= the requested frame, which for a still image is set "0".
     prompt_sets = cfg.get('text_prompts', {})
@@ -69,9 +77,10 @@ def from_mapping(cfg, frame=0):
         cut_overview=cfg.get('cut_overview'),
         cut_innercut=cfg.get('cut_innercut'),
         cut_icgray_p=cfg.get('cut_icgray_p'),
-        inner_size_pow=float(cfg.get('cut_ic_pow', 1.0)),
+        inner_size_pow=cfg.get('cut_ic_pow', 1.0),
         clip_denoised=bool(cfg.get('clip_denoised', False)),
         use_secondary=bool(cfg.get('use_secondary_model', True)),
+        augment=not bool(cfg.get('skip_augs', False)),
         init_image=cfg.get('init_image') or None,
         init_scale=float(cfg.get('init_scale', 0) or 0),
     )
