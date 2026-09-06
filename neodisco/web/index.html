@@ -1,115 +1,315 @@
 <!doctype html>
 <html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>neodisco</title>
-<meta name="description" content="Disco Diffusion's original models, running on current GPUs.">
-<meta name="theme-color" content="#000000">
-<meta property="og:title" content="neodisco">
-<meta property="og:description" content="Disco Diffusion's original models, running on current GPUs.">
-<meta property="og:type" content="website">
-<meta property="og:locale" content="en_US">
-<meta property="og:locale:alternate" content="tr_TR">
-<meta property="og:image" content="/og.png">
-<meta property="og:image:width" content="1200">
-<meta property="og:image:height" content="630">
-<meta name="twitter:card" content="summary_large_image">
-<link rel="icon" href="/favicon.svg" type="image/svg+xml">
-<link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png">
-<link rel="apple-touch-icon" href="/icon-180.png">
-<link rel="manifest" href="/manifest.webmanifest">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
-<link rel="stylesheet" href="app.css">
-<script>
-  try { if (localStorage.getItem('lang') === 'tr') { document.documentElement.setAttribute('data-lang','tr'); document.documentElement.lang='tr'; } } catch (e) {}
-</script>
-</head>
-<body>
-<a class="skip" href="#prompt"><span lang="en">Skip to prompt</span><span lang="tr">Prompt'a geç</span></a>
-
-<header class="masthead">
-  <a class="wordmark" href="https://github.com/cobanov/neodisco">
-    <svg viewBox="0 0 17 17" aria-hidden="true">
-      <rect x="0.5" y="0.5" width="16" height="16" rx="2" fill="none" stroke="currentColor" stroke-opacity="0.35"/>
-      <rect x="3" y="3" width="2.4" height="11" fill="currentColor" opacity="0.22"/>
-      <rect x="6" y="3" width="2.4" height="11" fill="currentColor" opacity="0.45"/>
-      <rect x="9" y="3" width="2.4" height="11" fill="currentColor" opacity="0.72"/>
-      <rect x="12" y="3" width="2" height="11" fill="currentColor"/>
-    </svg>
-    neodisco
-  </a>
-  <span class="chip">512 uncond</span>
-
-  <span class="spacer"></span>
-
-  <button class="rec-toggle" id="rec-toggle" type="button" aria-expanded="false" aria-controls="record">
-    <span lang="en">Record</span><span lang="tr">Künye</span>
-  </button>
-  <a class="nav-icon" href="https://github.com/cobanov/neodisco" title="cobanov/neodisco on GitHub" aria-label="cobanov/neodisco on GitHub">
-    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.4 7.4 0 0 1 2-.27c.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
-  </a>
-  <button class="lang-toggle" id="lang" type="button">TR</button>
-</header>
-
-<div class="deck">
-  <aside class="rail" id="rail" aria-label="Earlier renders" hidden></aside>
-
-  <main class="stage" id="stage">
-    <div class="plate-wrap" id="plate-wrap">
-      <div class="plate" id="plate">
-        <div class="ghost" id="ghost"><span id="ghost-dim">1280 &times; 768</span></div>
-        <img id="peek" alt="" aria-hidden="true">
-        <div class="bar"><i id="bar"></i></div>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>neodisco</title>
+    <meta
+      name="description"
+      content="Disco Diffusion's original models, running on current GPUs."
+    />
+    <meta name="theme-color" content="#131211" />
+    <meta property="og:title" content="neodisco" />
+    <meta
+      property="og:description"
+      content="Disco Diffusion's original models, running on current GPUs."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:locale:alternate" content="tr_TR" />
+    <meta property="og:image" content="/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png" />
+    <link rel="apple-touch-icon" href="/icon-180.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+    />
+    <link rel="stylesheet" href="app.css" />
+    <script>
+      try {
+        if (localStorage.getItem("lang") === "tr") {
+          document.documentElement.setAttribute("data-lang", "tr");
+          document.documentElement.lang = "tr";
+        }
+      } catch (e) {}
+    </script>
+  </head>
+  <body>
+    <a class="skip" href="#prompt"
+      ><span lang="en">Skip to prompt</span
+      ><span lang="tr">Prompt'a geç</span></a
+    >
+    <header class="masthead">
+      <a class="wordmark" href="/" aria-label="neodisco"
+        ><svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <circle cx="12" cy="12" r="9" stroke="currentColor" />
+          <path
+            d="M3 12h18M12 3c-6 5-6 13 0 18 6-5 6-13 0-18Z"
+            stroke="currentColor"
+          /></svg
+        >neodisco</a
+      >
+      <span class="masthead-caption">Disco Diffusion</span>
+      <div class="header-actions">
+        <a
+          class="nav-icon"
+          href="https://github.com/cobanov/neodisco"
+          title="cobanov/neodisco on GitHub"
+          aria-label="cobanov/neodisco on GitHub"
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <path
+              d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.4 7.4 0 0 1 2-.27c.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"
+            />
+          </svg>
+        </a>
+        <button
+          class="lang-toggle"
+          id="lang"
+          type="button"
+          aria-label="Language / Dil"
+        >
+          TR
+        </button>
       </div>
-      <p class="readout" id="readout" aria-live="polite"></p>
-      <div class="digest" id="digest" hidden>
-        <p class="digest-prompt" id="digest-prompt"></p>
-        <p class="digest-meta" id="digest-meta"></p>
+    </header>
+    <main class="studio">
+      <section class="stage" id="stage" aria-label="Canvas">
+        <div class="canvas" id="canvas">
+          <div class="empty-state" id="empty">
+            <div class="orb" aria-hidden="true">
+              <i></i><i></i><i></i><i></i>
+            </div>
+            <h1>
+              <span lang="en"
+                >A little imagination.<br />A world of its own.</span
+              ><span lang="tr">Biraz hayal gücü.<br />Bambaşka bir dünya.</span>
+            </h1>
+            <p>
+              <span lang="en">Describe it below. Watch it come to life.</span
+              ><span lang="tr">Aşağıya yaz. Burada hayat bulsun.</span>
+            </p>
+          </div>
+          <div class="empty-state waiting-state" id="waiting" hidden>
+            <div class="orb" aria-hidden="true">
+              <i></i><i></i><i></i><i></i>
+            </div>
+            <h1>
+              <span lang="en">A world is taking shape.</span
+              ><span lang="tr">Bir dünya şekilleniyor.</span>
+            </h1>
+            <p>
+              <span lang="en">Settle in. This can take a few minutes.</span
+              ><span lang="tr"
+                >Biraz zaman tanı. Bu birkaç dakika sürebilir.</span
+              >
+            </p>
+          </div>
+          <div class="image-area" id="image-area" hidden>
+            <img id="artwork" alt="" />
+            <div class="image-loading" id="image-loading" hidden>
+              <span lang="en">Loading image…</span
+              ><span lang="tr">Görsel yükleniyor…</span>
+            </div>
+          </div>
+        </div>
+        <div class="canvas-status">
+          <div class="progress" id="progress" hidden>
+            <div class="progress-heading">
+              <span class="status-dot" aria-hidden="true"></span
+              ><span id="progress-title"></span
+              ><span id="progress-step" class="mono"></span
+              ><span id="progress-time" class="mono"></span>
+            </div>
+            <progress
+              id="bar"
+              max="240"
+              value="0"
+              aria-label="Render progress"
+            ></progress>
+          </div>
+          <div class="result-actions" id="result-actions" hidden>
+            <span id="result-meta" class="mono"></span
+            ><button id="rec-toggle" type="button" class="text-button">
+              <span lang="en">Details</span
+              ><span lang="tr">Ayrıntılar</span></button
+            ><a id="rec-png" class="secondary" download
+              ><span lang="en">Save image ↓</span
+              ><span lang="tr">Görseli indir ↓</span></a
+            >
+          </div>
+        </div>
+      </section>
+      <form class="composer" id="form">
+        <fieldset>
+          <legend class="sr-only">
+            <span lang="en">Aspect ratio</span
+            ><span lang="tr">En boy oranı</span>
+          </legend>
+          <div class="ratios" id="ratios">
+            <button
+              type="button"
+              data-w="768"
+              data-h="768"
+              aria-pressed="false"
+              title="768 × 768"
+            >
+              <i style="aspect-ratio: 768/768" aria-hidden="true"></i
+              ><span>1:1</span>
+            </button>
+            <button
+              type="button"
+              data-w="1152"
+              data-h="768"
+              aria-pressed="false"
+              title="1152 × 768"
+            >
+              <i style="aspect-ratio: 1152/768" aria-hidden="true"></i
+              ><span>3:2</span>
+            </button>
+            <button
+              type="button"
+              data-w="1280"
+              data-h="768"
+              aria-pressed="true"
+              title="1280 × 768"
+            >
+              <i style="aspect-ratio: 1280/768" aria-hidden="true"></i
+              ><span>5:3</span>
+            </button>
+            <button
+              type="button"
+              data-w="1024"
+              data-h="576"
+              aria-pressed="false"
+              title="1024 × 576"
+            >
+              <i style="aspect-ratio: 1024/576" aria-hidden="true"></i
+              ><span>16:9</span>
+            </button>
+            <button
+              type="button"
+              data-w="768"
+              data-h="1152"
+              aria-pressed="false"
+              title="768 × 1152"
+            >
+              <i style="aspect-ratio: 768/1152" aria-hidden="true"></i
+              ><span>2:3</span>
+            </button>
+            <button
+              type="button"
+              data-w="576"
+              data-h="1024"
+              aria-pressed="false"
+              title="576 × 1024"
+            >
+              <i style="aspect-ratio: 576/1024" aria-hidden="true"></i
+              ><span>9:16</span>
+            </button>
+          </div>
+        </fieldset>
+        <div class="prompt-box">
+          <label for="prompt" class="sr-only"
+            ><span lang="en">Describe your image</span
+            ><span lang="tr">Görselini tarif et</span></label
+          ><textarea
+            id="prompt"
+            rows="2"
+            required
+            maxlength="12000"
+            spellcheck="false"
+            aria-describedby="prompt-help"
+          ></textarea
+          ><button id="go" class="primary" type="submit">
+            <span id="go-label"
+              ><span lang="en">Create</span><span lang="tr">Üret</span></span
+            ><svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path
+                d="M5 12h14m-6-6 6 6-6 6"
+                stroke="currentColor"
+                stroke-width="1.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+          </button>
+        </div>
+        <div class="prompt-footer">
+          <button class="text-button" id="ex" type="button">
+            <span lang="en">Need a spark? Try an example ↗</span
+            ><span lang="tr">İlham mı lazım? Bir örnek dene ↗</span></button
+          ><span class="hint mono" id="next-size">1280 × 768</span
+          ><span class="sr-only" id="prompt-help"
+            ><span lang="en"
+              >Describe the scene and artistic style. Press Control or Command
+              and Enter to create.</span
+            ><span lang="tr"
+              >Sahneyi ve tarzı anlat. Üretmek için Control veya Command ile
+              Enter'a bas.</span
+            ></span
+          >
+        </div>
+        <div class="error" id="err" role="alert" hidden></div>
+      </form>
+      <section class="history" aria-labelledby="history-title">
+        <div class="history-heading">
+          <h2 id="history-title">
+            <span lang="en">Creations</span><span lang="tr">Üretimler</span>
+          </h2>
+          <span id="history-count" class="mono"></span
+          ><button id="new" class="text-button" type="button">
+            <span lang="en">＋ New image</span
+            ><span lang="tr">＋ Yeni görsel</span></button
+          ><button id="refresh" class="text-button" type="button">
+            <span lang="en">Refresh</span><span lang="tr">Yenile</span>
+          </button>
+        </div>
+        <div class="rail" id="rail"></div>
+        <p class="history-empty" id="history-empty">
+          <span lang="en">Your creations will appear here.</span
+          ><span lang="tr">Ürettiklerin burada yerini alacak.</span>
+        </p>
+      </section>
+      <p class="sr-only" id="announcement" role="status" aria-live="polite"></p>
+    </main>
+    <dialog id="record" aria-labelledby="rec-title">
+      <div class="dialog-head">
+        <h2 id="rec-title">
+          <span lang="en">Image details</span
+          ><span lang="tr">Görsel ayrıntıları</span>
+        </h2>
+        <button id="rec-close" class="secondary" type="button">
+          <span lang="en">Close ✕</span><span lang="tr">Kapat ✕</span>
+        </button>
       </div>
-      <div class="err" id="err" hidden></div>
-    </div>
-  </main>
-
-  <form class="console" id="form">
-    <div class="ratios" id="ratios" role="group" aria-label="Aspect ratio">
-      <button type="button" data-w="768"  data-h="768"  aria-pressed="false">1:1</button>
-      <button type="button" data-w="1152" data-h="768"  aria-pressed="false">3:2</button>
-      <button type="button" data-w="1280" data-h="768"  aria-pressed="true">5:3</button>
-      <button type="button" data-w="1024" data-h="576"  aria-pressed="false">16:9</button>
-      <button type="button" data-w="768"  data-h="1152" aria-pressed="false">2:3</button>
-      <button type="button" data-w="576"  data-h="1024" aria-pressed="false">9:16</button>
-    </div>
-    <div class="entry">
-      <textarea id="prompt" rows="1" spellcheck="false" enterkeyhint="go"
-        placeholder="describe the picture, then name the artists"></textarea>
-      <button class="ex" id="ex" type="button"><span lang="en">Example</span><span lang="tr">Örnek</span></button>
-      <button id="go" type="submit"><span lang="en">Render</span><span lang="tr">Üret</span></button>
-    </div>
-  </form>
-
-  <aside class="record" id="record" aria-label="Render record">
-    <div class="rec-head">
-      <span class="label" id="rec-title"></span>
-      <span class="id" id="rec-id"></span>
-    </div>
-    <p class="rec-prompt" id="rec-prompt"></p>
-    <div class="rec-group">
-      <dl class="rec-list" id="rec-main"></dl>
-    </div>
-    <div class="rec-group">
-      <dl class="rec-list" id="rec-tech"></dl>
-    </div>
-    <div class="rec-actions" id="rec-actions" hidden>
-      <a id="rec-png" download><span lang="en">Save PNG</span><span lang="tr">PNG indir</span></a>
-      <button id="rec-copy" type="button"><span lang="en">Copy JSON</span><span lang="tr">JSON kopyala</span></button>
-    </div>
-  </aside>
-</div>
-
-<script src="app.js"></script>
-<script defer src="https://oa-c.cobanov.run/oa.js"></script>
-</body>
+      <p id="rec-prompt"></p>
+      <dl id="rec-main"></dl>
+      <details>
+        <summary>
+          <span lang="en">Model &amp; guidance</span
+          ><span lang="tr">Model ve yönlendirme</span>
+        </summary>
+        <dl id="rec-tech"></dl>
+      </details>
+      <div class="dialog-actions">
+        <button id="reuse" class="secondary" type="button">
+          <span lang="en">Reuse prompt ↗</span
+          ><span lang="tr">Prompt'u kullan ↗</span></button
+        ><a id="rec-json" class="secondary" download
+          ><span lang="en">Settings JSON ↓</span
+          ><span lang="tr">Ayarlar JSON ↓</span></a
+        >
+      </div>
+    </dialog>
+    <script src="app.js"></script>
+    <script defer src="https://oa-c.cobanov.run/oa.js"></script>
+  </body>
 </html>
