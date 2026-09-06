@@ -10,6 +10,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from .runtime import fp32_context
+
 # Name -> (open_clip model, pretrained tag). These are the ones Disco actually shipped with.
 # The `-quickgelu` suffix matters: OpenAI's released weights were trained with QuickGELU,
 # and open_clip warns (then silently degrades) if you load them into a plain GELU model.
@@ -23,6 +25,8 @@ DEFAULT_MODELS = [
 class ClipBank(nn.Module):
     def __init__(self, models=None, device='cuda', dtype=torch.float32):
         super().__init__()
+        if dtype != torch.float32:
+            raise ValueError('CLIP guidance is fixed to fp32; dtype must be torch.float32')
         import open_clip
         self.device = device
         self.models = []
@@ -32,7 +36,7 @@ class ClipBank(nn.Module):
         for name, pretrained in (models or DEFAULT_MODELS):
             model, _, preprocess = open_clip.create_model_and_transforms(
                 name, pretrained=pretrained, device=device)
-            model = model.eval().requires_grad_(False).to(dtype)
+            model = model.eval().requires_grad_(False).float()
             norm = next(t for t in preprocess.transforms if hasattr(t, 'mean'))
             self.models.append(model)
             self.means.append(torch.tensor(norm.mean, device=device).view(1, 3, 1, 1))
@@ -55,18 +59,26 @@ class ClipBank(nn.Module):
         import open_clip
         weights = weights or [1.0] * len(prompts)
         out = []
-        for i, model in enumerate(self.models):
-            tokens = open_clip.tokenize(prompts).to(self.device)
-            emb = model.encode_text(tokens).float()
-            out.append(emb)
+        with fp32_context(torch.device(self.device)):
+            for i, model in enumerate(self.models):
+                tokens = open_clip.tokenize(prompts).to(self.device)
+                emb = model.encode_text(tokens).float()
+                out.append(emb)
         return out, torch.tensor(weights, device=self.device, dtype=torch.float32)
 
-    def encode_cutouts(self, cutouts, model_idx):
+    def encode_cutouts(self, cutouts, model_idx, deterministic=False):
         """cutouts in [0, 1]; normalises and resizes for the given model."""
-        x = cutouts
-        size = self.sizes[model_idx]
-        if x.shape[-1] != size:
-            x = F.interpolate(x, size=(size, size), mode='bicubic',
-                              align_corners=False, antialias=True)
-        x = (x - self.means[model_idx]) / self.stds[model_idx]
-        return self.models[model_idx].encode_image(x.to(self.dtype)).float()
+        with fp32_context(torch.device(self.device)):
+            x = cutouts.float()
+            size = self.sizes[model_idx]
+            # CUDA bicubic antialias backward is nondeterministic. Reference mode
+            # resizes CPU cutouts before the differentiable transfer to CLIP's device.
+            resize_on_cpu = deterministic and torch.device(self.device).type == 'cuda'
+            if resize_on_cpu and x.device.type != 'cpu':
+                x = x.cpu()
+            if x.shape[-1] != size:
+                x = F.interpolate(x, size=(size, size), mode='bicubic',
+                                  align_corners=False, antialias=True)
+            x = x.to(self.device)
+            x = (x - self.means[model_idx].float()) / self.stds[model_idx].float()
+            return self.models[model_idx].encode_image(x.to(torch.float32)).float()

@@ -3,8 +3,8 @@
 Everyone who used Disco has a folder of these JSON files. They are the record of what was
 made, and the point of this project is that they should still run. The keys are mapped
 onto the sampler here; anything about animation, video init or 3D is ignored, and the
-"secondary model" toggle is ignored too, because on a current card the real model's own
-prediction is affordable and more accurate.
+secondary-model toggle is preserved. Animation, video and 3D keys remain outside the
+still-image sampler.
 """
 
 import json
@@ -35,10 +35,8 @@ def split_prompt(text):
     return text.strip(), 1.0
 
 
-def load(path, frame=0):
-    """Return a dict of keyword arguments for the pixel backend and guidance."""
-    with open(path) as handle:
-        cfg = json.load(handle)
+def from_mapping(cfg, frame=0):
+    """Translate an original Disco mapping into canonical neodisco settings."""
 
     # text_prompts is keyed by the frame the prompt set starts at; take the last set
     # whose start is <= the requested frame, which for a still image is set "0".
@@ -61,7 +59,7 @@ def load(path, frame=0):
         steps=int(cfg.get('steps', 250)),
         skip_steps=int(cfg.get('skip_steps', 0)),
         eta=float(cfg.get('eta', 0.8)),
-        seed=int(cfg['seed']) if cfg.get('seed') not in (None, 'random_seed') else 0,
+        seed=int(cfg['seed']) if cfg.get('seed') not in (None, 'random_seed') else -1,
         clip_scale=float(cfg.get('clip_guidance_scale', 5000)),
         tv_scale=float(cfg.get('tv_scale', 0)),
         range_scale=float(cfg.get('range_scale', 150)),
@@ -77,3 +75,9 @@ def load(path, frame=0):
         init_image=cfg.get('init_image') or None,
         init_scale=float(cfg.get('init_scale', 0) or 0),
     )
+
+
+def load(path, frame=0):
+    """Read an original Disco settings JSON file."""
+    with open(path, encoding='utf-8') as handle:
+        return from_mapping(json.load(handle), frame=frame)

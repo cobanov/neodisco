@@ -1,0 +1,19 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  cpu:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - run: uv sync --frozen --extra dev --extra webui
+      - run: uv run --frozen pytest -m "not integration"
+      - run: uv build
+      - run: uv run --frozen python -c "import neodisco, neodisco.cli, neodisco.server"
+      - run: uv run --frozen python -m neodisco.cli --help

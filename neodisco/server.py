@@ -6,6 +6,7 @@ for the several minutes a 1280x768 run takes.
 """
 
 import argparse
+import gc
 import io
 import json
 import os
@@ -24,6 +25,8 @@ from .cutouts import MakeCutouts
 from .guidance import PromptGuidance
 from .backends.pixel import PixelBackend
 from . import disco_config
+from .runtime import auto_cut_batch, prepare_reference_runtime, resolve_runtime
+from .settings import WEB_DEFAULTS, effective_record, normalise_settings
 
 WEB = Path(__file__).parent / 'web'
 
@@ -62,7 +65,7 @@ class Job:
 class Runner:
     """Owns the models and the queue. Everything GPU-touching happens on one thread."""
 
-    def __init__(self, weights_dir, out_dir):
+    def __init__(self, weights_dir, out_dir, runtime_overrides=None, start_worker=True):
         self.weights_dir = weights_dir
         self.out_dir = Path(out_dir)
         self.out_dir.mkdir(parents=True, exist_ok=True)
@@ -72,8 +75,17 @@ class Runner:
         self.lock = threading.Lock()
         self._backends: dict[tuple, PixelBackend] = {}
         self._banks: dict[tuple, ClipBank] = {}
+        self.runtime_overrides = dict(runtime_overrides or {})
+        self.reference_ready = False
+        if self.runtime_overrides.get('deterministic'):
+            policy = resolve_runtime(
+                self.runtime_overrides.get('device', 'auto'),
+                self.runtime_overrides.get('precision', 'auto'))
+            prepare_reference_runtime(policy.device)
+            self.reference_ready = True
         self._restore()
-        threading.Thread(target=self._loop, daemon=True).start()
+        if start_worker:
+            threading.Thread(target=self._loop, daemon=True).start()
 
     def _restore(self):
         """Rebuild finished jobs from disk.
@@ -102,8 +114,10 @@ class Runner:
             self.order.append(job_id)
 
     def submit(self, settings):
-        job = Job(id=uuid.uuid4().hex[:12], settings=settings, total=int(settings['steps']),
-                  width=int(settings['width']), height=int(settings['height']))
+        job = Job(id=uuid.uuid4().hex[:12], settings=settings,
+                  total=max(1, int(settings['steps']) - int(settings['skip_steps'])),
+                  width=int(settings['width']), height=int(settings['height']),
+                  seed=int(settings['seed']))
         with self.lock:
             self.jobs[job.id] = job
             self.order.append(job.id)
@@ -117,22 +131,37 @@ class Runner:
             for n, j in enumerate(waiting, start=1):
                 j.position = n
 
-    def _backend(self, image_size, fp16):
-        key = (image_size, fp16)
+    def _backend(self, settings):
+        policy = resolve_runtime(settings['device'], settings['precision'])
+        key = (settings['image_size'], settings['width'], settings['height'],
+               str(policy.device), policy.precision,
+               settings['attention'], settings['compile_mode'], settings['grad_checkpoint'],
+               settings['use_secondary'])
         if key not in self._backends:
             self._backends.clear()
-            torch.cuda.empty_cache()
+            gc.collect()
+            if policy.device.type == 'cuda':
+                torch.cuda.empty_cache()
             self._backends[key] = PixelBackend(
-                PixelBackend.default_path(image_size, self.weights_dir),
-                image_size=image_size, fp16=fp16, use_checkpoint=True,
-                secondary_path=PixelBackend.default_secondary_path(self.weights_dir),
-                autocast_dtype=torch.bfloat16)
-        return self._backends[key]
+                PixelBackend.default_path(settings['image_size'], self.weights_dir),
+                image_size=settings['image_size'], device=policy.device,
+                fp16=policy.model_fp16, use_checkpoint=settings['grad_checkpoint'],
+                secondary_path=(PixelBackend.default_secondary_path(self.weights_dir)
+                                if settings['use_secondary'] else None),
+                fast_attention=settings['attention'] == 'sdpa',
+                autocast_dtype=policy.autocast_dtype,
+                compile_mode=settings['compile_mode'])
+        return self._backends[key], policy
 
-    def _bank(self, names):
-        key = tuple(names)
+    def _bank(self, names, device):
+        key = (str(device), *tuple(names))
         if key not in self._banks:
-            self._banks[key] = ClipBank([disco_config.CLIP_NAMES[n] for n in names])
+            self._banks.clear()
+            gc.collect()
+            if device.type == 'cuda':
+                torch.cuda.empty_cache()
+            self._banks[key] = ClipBank(
+                [disco_config.CLIP_NAMES[n] for n in names], device=device)
         return self._banks[key]
 
     def _loop(self):
@@ -153,15 +182,20 @@ class Runner:
                 torch.cuda.empty_cache()
 
     def _run(self, job):
-        s = job.settings
-        bank = self._bank(s['clip_models'])
-        cutouts = MakeCutouts(bank.cut_size, inner_size_pow=float(s['inner_size_pow']))
+        s = dict(job.settings)
+        backend, policy = self._backend(s)
+        s['device'], s['precision'] = str(policy.device), policy.precision
+        if s['cut_batch'] == 'auto':
+            s['cut_batch'] = auto_cut_batch(policy.device)
+        bank = self._bank(s['clip_models'], policy.device)
+        cutouts = MakeCutouts(
+            bank.cut_size, inner_size_pow=float(s['inner_size_pow']),
+            augment=bool(s['augment']))
         guidance = PromptGuidance(
             bank, cutouts, s['prompts'], s['weights'], clip_scale=float(s['clip_scale']),
             tv_scale=float(s['tv_scale']), range_scale=float(s['range_scale']),
             sat_scale=float(s['sat_scale']), clamp_max=float(s['clamp_max']))
-        backend = self._backend(int(s['image_size']), bool(s.get('fp16')))
-        seed = int(s['seed']) if int(s['seed']) >= 0 else int(torch.randint(0, 2 ** 31, ()))
+        seed = int(s['seed'])
         job.seed = seed
         # Atlanan adimlar hic kosulmuyor; sayaci gercek yineleme sayisina kuruyoruz,
         # yoksa bar 240/250'de "bitti" diyor.
@@ -200,27 +234,27 @@ class Runner:
                     yield v
 
         pixels = backend.sample(
-            guidance=guidance, steps=int(s['steps']), seed=seed,
+            guidance=guidance, batch_size=int(s['batch_size']), steps=int(s['steps']), seed=seed,
             width=int(s['width']), height=int(s['height']), eta=float(s['eta']),
-            skip_steps=int(s['skip_steps']), cut_overview=s['cut_overview'] or None,
-            cut_innercut=s['cut_innercut'] or None, cut_icgray_p=s['cut_icgray_p'] or None,
-            cutn_batches=int(s['cutn_batches']), cut_batch=64,
-            use_secondary=bool(s['use_secondary']), init_image=s.get('init_image') or None,
+            skip_steps=int(s['skip_steps']), cut_overview=s['cut_overview'],
+            cut_innercut=s['cut_innercut'], cut_icgray_p=s['cut_icgray_p'],
+            cutn_batches=int(s['cutn_batches']), cut_batch=int(s['cut_batch']),
+            clip_denoised=bool(s['clip_denoised']), use_secondary=bool(s['use_secondary']),
+            init_image=s.get('init_image') or None,
             init_scale=float(s.get('init_scale') or 0), progress=Ticker,
-            preview=write_preview)
+            preview=write_preview, deterministic=bool(s['deterministic']),
+            finite_check=bool(s['finite_check']))
         Image.fromarray(backend.to_uint8(pixels)[0]).save(self.out_dir / f'{job.id}.png')
-        out = dict(s, seed=seed)
-        out.pop('init_image', None)
-        (self.out_dir / f'{job.id}.json').write_text(json.dumps(out, indent=2, ensure_ascii=False))
+        out = effective_record(dict(
+            s, seed=seed, actual_steps=job.total,
+            compile_mode_requested=s['compile_mode'],
+            compile_mode_effective=backend.effective_compile_mode))
+        job.settings = out
+        (self.out_dir / f'{job.id}.json').write_text(
+            json.dumps(out, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
 
 
-DEFAULTS = dict(prompts=[], weights=[], clip_models=['ViTB32', 'ViTB16', 'RN50'],
-                image_size=512, width=1280, height=768, steps=250, skip_steps=10, seed=-1,
-                eta=0.8, clamp_max=0.05, clip_scale=5000.0, tv_scale=0.0, range_scale=150.0,
-                sat_scale=0.0, cutn_batches=4, cut_overview='[12]*400+[4]*600',
-                cut_innercut='[4]*400+[12]*600', cut_icgray_p='[0.2]*400+[0]*600',
-                inner_size_pow=1.0, use_secondary=True, fp16=False, init_image=None,
-                init_scale=0.0)
+DEFAULTS = WEB_DEFAULTS
 
 
 def build_app(runner, uploads):
@@ -232,34 +266,30 @@ def build_app(runner, uploads):
 
     @app.post('/api/generate')
     async def generate(payload: dict):
-        settings = dict(DEFAULTS)
-        if payload.get('disco_json'):
-            try:
-                tmp = uploads / f'{uuid.uuid4().hex}.json'
-                tmp.write_text(payload['disco_json'])
-                settings.update(disco_config.load(str(tmp)))
-                tmp.unlink(missing_ok=True)
-            except Exception as exc:
-                raise HTTPException(400, f'settings file could not be read: {exc}')
-        for k, v in payload.items():
-            if k in settings and k != 'prompts' and v is not None:
-                settings[k] = v
-        text = (payload.get('prompt_text') or '').strip()
-        if text:
-            prompts, weights = [], []
-            for line in text.splitlines():
-                line = line.strip()
-                if not line:
-                    continue
-                p, w = disco_config.split_prompt(line)
-                prompts.append(p)
-                weights.append(w)
-            settings['prompts'], settings['weights'] = prompts, weights
-        if not settings['prompts']:
-            raise HTTPException(400, 'write at least one prompt')
-        for axis in ('width', 'height'):
-            if int(settings[axis]) % 64:
-                raise HTTPException(400, f'{axis} must be a multiple of 64')
+        try:
+            source = None
+            if payload.get('disco_json'):
+                raw = json.loads(payload['disco_json'])
+                source = disco_config.from_mapping(raw) if 'text_prompts' in raw else raw
+            overrides = {k: v for k, v in payload.items() if k in DEFAULTS and v is not None}
+            text = (payload.get('prompt_text') or '').strip()
+            if text:
+                pairs = [disco_config.split_prompt(line.strip()) for line in text.splitlines()
+                         if line.strip()]
+                overrides['prompts'] = [pair[0] for pair in pairs]
+                overrides['weights'] = [pair[1] for pair in pairs]
+            overrides.update(runner.runtime_overrides)
+            settings = normalise_settings(
+                source, overrides, defaults=DEFAULTS, resolve_random_seed=True)
+            if settings['batch_size'] != 1:
+                raise ValueError('the web API currently supports batch_size=1')
+            if settings['deterministic'] and not getattr(runner, 'reference_ready', False):
+                raise ValueError('restart neodisco-web with --deterministic for reference mode')
+            # Resolve device/precision before queuing, so invalid requests fail as 4xx
+            # without loading checkpoints or CLIP towers.
+            resolve_runtime(settings['device'], settings['precision'])
+        except (TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise HTTPException(400, str(exc)) from exc
         return runner.submit(settings).public()
 
     @app.post('/api/upload')
@@ -339,13 +369,24 @@ def main():
     ap.add_argument('--out', default='outputs')
     ap.add_argument('--host', default='127.0.0.1')
     ap.add_argument('--port', type=int, default=7870)
+    ap.add_argument('--device', default='auto')
+    ap.add_argument('--precision', choices=['auto', 'fp32', 'bf16', 'fp16'], default='auto')
+    ap.add_argument('--cut-batch', default='auto')
+    ap.add_argument('--attention', choices=['original', 'sdpa'], default='sdpa')
+    ap.add_argument('--compile', dest='compile_mode',
+                    choices=['eager', 'default', 'reduce-overhead', 'max-autotune'],
+                    default='eager')
+    ap.add_argument('--deterministic', action='store_true')
     args = ap.parse_args()
 
     from .cli import _raise_fd_limit
     _raise_fd_limit()
     uploads = Path(args.out) / 'uploads'
     uploads.mkdir(parents=True, exist_ok=True)
-    runner = Runner(args.weights, args.out)
+    runner = Runner(args.weights, args.out, runtime_overrides={
+        'device': args.device, 'precision': args.precision, 'cut_batch': args.cut_batch,
+        'attention': args.attention, 'compile_mode': args.compile_mode,
+        'deterministic': args.deterministic})
     import uvicorn
     uvicorn.run(build_app(runner, uploads), host=args.host, port=args.port, log_level='warning')
 

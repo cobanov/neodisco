@@ -6,6 +6,7 @@ import math
 
 import torch as th
 import torch.nn as nn
+from torch.utils.checkpoint import checkpoint as torch_checkpoint
 
 
 # PyTorch 1.7 has SiLU, but we support PyTorch 1.5.
@@ -133,8 +134,11 @@ def checkpoint(func, inputs, params, flag):
     :param flag: if False, disable gradient checkpointing.
     """
     if flag:
-        args = tuple(inputs) + tuple(params)
-        return CheckpointFunction.apply(func, len(inputs), *args)
+        # PyTorch's maintained non-reentrant implementation preserves autocast state,
+        # supports autograd.grad, and does not require frozen model parameters to be
+        # threaded through a custom Function. ``params`` remains in the signature for
+        # checkpoint architecture compatibility with the upstream call sites.
+        return torch_checkpoint(func, *tuple(inputs), use_reentrant=False)
     else:
         return func(*inputs)
 

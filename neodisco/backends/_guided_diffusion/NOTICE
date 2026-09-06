@@ -1,4 +1,4 @@
-The Python modules in this directory are copied unmodified from
+The Python modules in this directory are copied from
 openai/guided-diffusion (https://github.com/openai/guided-diffusion), which is
 distributed under the MIT licence reproduced in LICENSE.
 
@@ -7,3 +7,7 @@ Copied on: 2026-09-03
 Reason: the upstream package depends on mpi4py and blobfile, which are only used by its
 training and data-loading code. Vendoring the sampling subset keeps neodisco installable
 with pip alone.
+
+Local modification: nn.py routes activation checkpointing through PyTorch's maintained
+non-reentrant torch.utils.checkpoint API. The model architecture and checkpoint state
+dictionary keys are unchanged.

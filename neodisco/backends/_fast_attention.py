@@ -6,11 +6,11 @@ layer sees several thousand tokens and the explicit matrix is both the slowest p
 the step and the reason fp16 overflows. `scaled_dot_product_attention` does the same
 arithmetic with a fused kernel and a numerically stable softmax.
 
-The vendored files are left untouched; this module swaps the two attention classes'
-forward methods at import time. Results are identical up to floating-point rounding.
+The vendored files are left untouched. Each backend configures only its own attention
+module instances, so an SDPA backend cannot contaminate a later reference backend.
 """
 
-import math
+import types
 
 import torch
 import torch.nn.functional as F
@@ -48,14 +48,18 @@ def _new_forward(self, qkv):
                  v.reshape(bs * self.n_heads, ch, length), bs, self.n_heads, ch, length)
 
 
-_installed = False
-
-
-def install():
-    """Route the UNet's attention through SDPA. Safe to call more than once."""
-    global _installed
-    if _installed:
-        return
-    _unet.QKVAttentionLegacy.forward = _legacy_forward
-    _unet.QKVAttention.forward = _new_forward
-    _installed = True
+def configure(model, enabled=True):
+    """Enable or restore SDPA on the attention instances owned by ``model``."""
+    for module in model.modules():
+        if not isinstance(module, (_unet.QKVAttentionLegacy, _unet.QKVAttention)):
+            continue
+        original = getattr(module, '_neodisco_original_forward', None)
+        if original is None:
+            original = module.forward
+            object.__setattr__(module, '_neodisco_original_forward', original)
+        if not enabled:
+            module.forward = original
+        elif isinstance(module, _unet.QKVAttentionLegacy):
+            module.forward = types.MethodType(_legacy_forward, module)
+        else:
+            module.forward = types.MethodType(_new_forward, module)

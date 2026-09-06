@@ -3,3 +3,6 @@ __pycache__/
 .venv/
 out*.png
 weights/
+outputs/
+benchmark-results/
+dist/
