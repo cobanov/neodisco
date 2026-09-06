@@ -6,3 +6,6 @@ weights/
 outputs/
 benchmark-results/
 dist/
+
+# Studio fonts are provisioned privately at deployment, not redistributed.
+neodisco/web/fonts/*.woff2
