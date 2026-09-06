@@ -62,3 +62,41 @@ def test_deterministic_mixed_clip_resize_backward_uses_cpu_path():
         return source.grad
 
     assert torch.equal(gradient(), gradient())
+
+
+@pytest.mark.integration
+def test_real_web_job_preserves_disco_semantics_and_result_metadata(real_weights, tmp_path):
+    if not torch.cuda.is_available():
+        pytest.skip('CUDA is unavailable')
+    import json
+    import time
+    from fastapi.testclient import TestClient
+    from neodisco.server import Runner, build_app
+
+    runner = Runner(real_weights, tmp_path / 'out', runtime_overrides={
+        'device': 'cuda', 'precision': 'bf16', 'compile_mode': 'eager', 'cut_batch': 8})
+    client = TestClient(build_app(runner, tmp_path))
+    config = {'text_prompts': {'0': ['a blue glass sphere']}, 'ViTB32': True,
+              'diffusion_model': '256x256_diffusion_uncond', 'width': 256, 'height': 256,
+              'steps': 4, 'skip_steps': 1, 'seed': 77, 'skip_augs': True,
+              'cut_overview': 1, 'cut_innercut': 0, 'cutn_batches': 1,
+              'cut_ic_pow': '[1]*400+[2]*600'}
+    response = client.post('/api/generate', json={'disco_json': json.dumps(config)})
+    assert response.status_code == 200
+    job_id = response.json()['id']
+    deadline = time.monotonic() + 90
+    while time.monotonic() < deadline:
+        job = client.get(f'/api/job/{job_id}').json()
+        if job['state'] in ('done', 'error'):
+            break
+        time.sleep(.1)
+    assert job['state'] == 'done', job
+    record = client.get(f'/api/result/{job_id}.json').json()
+    assert record['actual_steps'] == 3
+    assert record['sampling_semantics'] == 'disco-2026-09-07'
+    assert record['secondary_precision'] == 'fp32'
+    assert record['augment'] is False
+    assert record['inner_size_pow'] == '[1]*400+[2]*600'
+    assert isinstance(record['guidance_nan_steps'], list)
+    png = client.get(f'/api/result/{job_id}.png')
+    assert png.status_code == 200 and png.content.startswith(b'\x89PNG')

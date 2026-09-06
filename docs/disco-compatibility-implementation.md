@@ -55,7 +55,8 @@ were generated with an independent original ResizeRight checkout. Tests cover:
 - original-config imports and effective settings provenance.
 
 These oracles use toy encoders/backbones to isolate mathematics. Real 256/512 loading,
-finite CUDA generation and deterministic resize backward have separate integration tests.
+finite CUDA generation, deterministic resize backward and a complete API job with
+result metadata have separate integration tests.
 No claim is made that fp32 OpenCLIP + bf16 UNet equals historical fp16 OpenAI CLIP +
 fp16 UNet numerically. Strict determinism refers to one modern stack. Per-job seeds do
 not emulate later images in an old notebook's continuous batch RNG stream.
@@ -63,8 +64,9 @@ not emulate later images in an old notebook's continuous batch RNG stream.
 ## GPU measurements and release
 
 Final timings and release status are added after full-resolution validation.
-The complete suite passes 81 tests on the RTX 5090 host (78 CPU/oracle + 3 CUDA
-integration tests); local CPU tests and wheel/sdist builds also pass.
+Verification totals 82 tests on the RTX 5090 host: the 81-test suite (78 CPU/oracle
++ 3 CUDA integration) and the subsequently added real API integration test all pass.
+Local CPU tests and wheel/sdist builds also pass.
 An uncached eager baseline completed in 223.366 seconds. Its subsequent compiled
 render exposed a non-finite guidance gradient. This failed run is not a successful
 speed or quality result and does not prove that compile caused the NaN. The reference
@@ -73,3 +75,30 @@ restored and recorded instead of silently failing or changing the loss formula.
 A subsequent cached compile diagnostic render completed in 147.098 seconds without
 triggering recovery. The precise operation producing the earlier NaN was not recovered
 from that failed process. CUDA stochastic-gradient nondeterminism remains a limitation.
+
+
+### Final cached path
+
+| Condition | Seconds | Peak allocated VRAM | NaN guidance steps |
+|---|---:|---:|---:|
+| Eager, seed 1290357248 | 170.695 | 13.283 GiB | 0 |
+| Warm compile, same seed | 137.591 | 13.283 GiB | 0 |
+| Warm compile, seed 7 | 137.616 | 13.284 GiB | 0 |
+
+Plan caching shortened the eager run by 23.58%. Warm compile
+shortened the cached run by 19.39% (33.10 seconds). Each condition has one
+render; these are not medians. Compile setup/warmup is excluded, and an existing disk
+compiler cache was present. First-use latency is not established by these timings.
+The cache held 512 plans using about 12.3 MiB of tensors, within its 32 MiB bound.
+
+Visual inspection: both same-seed outputs preserve the broad cloud/spaceship/blue-orb
+composition, but local geometry, highlights and painted texture differ between eager
+and compiled renders. Neither reproduces the historical image. Ordinary CUDA backward
+nondeterminism and floating-point differences prevent attribution to compilation alone.
+Speed is measured; perceptual or pixel equivalence is not claimed.
+
+Evidence: [machine-readable manifest](benchmarks/rtx5090-20260907-disco-compatibility.json).
+Local PNGs and scripts: `benchmark-results/fidelity-final-20260907/`.
+The release on the user's RTX 5090 host enables `--compile default`, with two compile
+workers. Package/CLI defaults remain eager. The existing output directory and service
+ports stay the same. Deployment rollback restores the saved previous systemd drop-in.

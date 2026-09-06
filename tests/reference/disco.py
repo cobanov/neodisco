@@ -1,10 +1,10 @@
-# Extracted verbatim from alembics/disco-diffusion disco.py.
+# Extracted (trailing whitespace removed) from alembics/disco-diffusion disco.py.
 # 37eb39bfe0e7310c86c244859b789a5346754251, MIT; see LICENSE.disco.
 # Tests inject notebook globals; these are independent oracle functions.
 
 class MakeCutoutsDango(nn.Module):
     def __init__(self, cut_size,
-                 Overview=4, 
+                 Overview=4,
                  InnerCrop = 0, IC_Size_Pow=0.5, IC_Grey_P = 0.2
                  ):
         super().__init__()
@@ -54,7 +54,7 @@ class MakeCutoutsDango(nn.Module):
         max_size = min(sideX, sideY)
         min_size = min(sideX, sideY, self.cut_size)
         l_size = max(sideX, sideY)
-        output_shape = [1,3,self.cut_size,self.cut_size] 
+        output_shape = [1,3,self.cut_size,self.cut_size]
         output_shape_2 = [1,3,self.cut_size+2,self.cut_size+2]
         pad_input = F.pad(input,((sideY-max_size)//2,(sideY-max_size)//2,(sideX-max_size)//2,(sideX-max_size)//2), **padargs)
         cutout = resize(pad_input, out_shape=output_shape)
@@ -129,7 +129,7 @@ def cond_fn(x, t, y=None):
                   input_resolution=224
 
               cuts = MakeCutoutsDango(input_resolution,
-                      Overview= args.cut_overview[1000-t_int], 
+                      Overview= args.cut_overview[1000-t_int],
                       InnerCrop = args.cut_innercut[1000-t_int],
                       IC_Size_Pow=args.cut_ic_pow[1000-t_int],
                       IC_Grey_P = args.cut_icgray_p[1000-t_int]
@@ -160,13 +160,13 @@ def cond_fn(x, t, y=None):
           grad = torch.zeros_like(x)
     if args.clamp_grad and x_is_NaN == False:
         magnitude = grad.square().mean().sqrt()
-        return grad * magnitude.clamp(max=args.clamp_max) / magnitude  #min=-0.02, min=-clamp_max, 
+        return grad * magnitude.clamp(max=args.clamp_max) / magnitude  #min=-0.02, min=-clamp_max,
     return grad
 
 def spherical_dist_loss(x, y):
     x = F.normalize(x, dim=-1)
     y = F.normalize(y, dim=-1)
-    return (x - y).norm(dim=-1).div(2).arcsin().pow(2).mul(2)     
+    return (x - y).norm(dim=-1).div(2).arcsin().pow(2).mul(2)
 
 def tv_loss(input):
     """L2 total variation loss, as in Mahendran et al."""

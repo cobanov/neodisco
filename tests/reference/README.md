@@ -1,6 +1,6 @@
 # Original Disco test oracles
 
-`disco.py` contains verbatim AST-selected definitions from
+`disco.py` contains AST-selected definitions (only trailing whitespace removed) from
 alembics/disco-diffusion `37eb39bfe0e7310c86c244859b789a5346754251`:
 MakeCutoutsDango, cond_fn, spherical_dist_loss, tv_loss, range_loss.
 Notebook globals are injected by tests. Licence: LICENSE.disco.
