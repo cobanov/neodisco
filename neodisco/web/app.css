@@ -70,10 +70,7 @@ body::after {
 [hidden] {
   display: none !important;
 }
-:root:not([data-lang="tr"]) [lang="tr"],
-:root[data-lang="tr"] [lang="en"] {
-  display: none !important;
-}
+
 button,
 input,
 textarea {
@@ -189,18 +186,6 @@ h2 {
   fill: currentColor;
   width: 19px;
   height: 19px;
-}
-.lang-toggle {
-  min-width: 44px;
-  height: 44px;
-  border: 1px solid var(--line-strong);
-  background: none;
-  color: var(--ink);
-  font: 10px var(--mono);
-  letter-spacing: 0.12em;
-}
-.lang-toggle:hover {
-  background: var(--surface-2);
 }
 .studio {
   width: min(var(--measure), 100% - 112px);
@@ -873,4 +858,34 @@ summary {
   .primary {
     font-size: 10px;
   }
+}
+
+/* The compose frame is fitted to available space without stretching old results. */
+#empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+.frame-preview {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  border: 1px solid #333;
+  background: #050505;
+  color: var(--ink);
+}
+#frame-size {
+  font-size: 13px;
+  letter-spacing: 0.12em;
+}
+.frame-hint {
+  color: var(--muted);
+  font-size: 9px;
+  letter-spacing: 0.16em;
 }

@@ -1,5 +1,4 @@
 const $ = (id) => document.getElementById(id);
-const root = document.documentElement;
 
 const FIXED = {
   image_size: 512,
@@ -57,7 +56,6 @@ let current = null,
 let busy = false,
   previewVersion = 0,
   connectionLost = false;
-const t = (en, tr) => (root.lang === "tr" ? tr : en);
 const fmtTime = (sec) => {
   const n = Math.max(0, Math.round(sec || 0));
   return n >= 60
@@ -91,31 +89,20 @@ const grow = () => {
     Math.min(116, Math.max(56, $("prompt").scrollHeight)) + "px";
 };
 
-function translate() {
-  $("lang").textContent = root.lang === "tr" ? "EN" : "TR";
-  $("refresh").textContent = t("Refresh", "Yenile");
-  $("prompt").placeholder = t(
-    "A world, a feeling, a scene. What do you imagine?",
-    "Bir dünya, bir his, bir sahne. Ne hayal ediyorsun?",
+$("prompt").placeholder = "A world, a feeling, a scene. What do you imagine?";
+
+function fitFrame() {
+  const canvas = $("canvas");
+  const scale = Math.min(
+    canvas.clientWidth / next.w,
+    canvas.clientHeight / next.h,
+    1,
   );
-  $("stage").setAttribute("aria-label", t("Canvas", "Tuval"));
-  $("bar").setAttribute(
-    "aria-label",
-    t("Render progress", "Üretim ilerlemesi"),
-  );
-  $("go-label").textContent = busy
-    ? t("Creating", "Üretiliyor")
-    : t("Create", "Üret");
-  if (active) paintProgress(active);
-  if (current) paintResult();
-  paintHistory();
+  if (scale <= 0) return;
+  $("frame-preview").style.width = Math.round(next.w * scale) + "px";
+  $("frame-preview").style.height = Math.round(next.h * scale) + "px";
 }
-$("lang").addEventListener("click", () => {
-  root.lang = root.lang === "tr" ? "en" : "tr";
-  root.dataset.lang = root.lang;
-  store("lang", root.lang);
-  translate();
-});
+new ResizeObserver(fitFrame).observe($("canvas"));
 
 function lock(on) {
   busy = on;
@@ -123,9 +110,7 @@ function lock(on) {
   for (const id of ["go", "ex", "new", "prompt"]) $(id).disabled = on;
   for (const b of $("ratios").children) b.disabled = on;
   for (const b of $("rail").children) b.disabled = on;
-  $("go-label").textContent = on
-    ? t("Creating", "Üretiliyor")
-    : t("Create", "Üret");
+  $("go-label").textContent = on ? "Creating" : "Create";
   $("canvas").setAttribute("aria-busy", String(on));
 }
 function compose() {
@@ -138,11 +123,15 @@ function compose() {
   $("artwork").removeAttribute("src");
   $("result-actions").hidden = true;
   $("progress").hidden = true;
+  fitFrame();
   paintHistory();
 }
 function setSize(w, h) {
   next = { w, h };
   $("next-size").textContent = `${w} × ${h}`;
+  $("frame-size").textContent = `${w} × ${h}`;
+  $("frame-preview").setAttribute("aria-label", `${w} by ${h} pixel frame`);
+  fitFrame();
   for (const b of $("ratios").children)
     b.setAttribute(
       "aria-pressed",
@@ -153,7 +142,9 @@ $("ratios").addEventListener("click", (e) => {
   const b = e.target.closest("button");
   if (!b || busy) return;
   setSize(+b.dataset.w, +b.dataset.h);
-  // Frame selection is for the next image; the displayed image keeps its shape.
+  // Leave the previous result in history and show the next frame immediately.
+  compose();
+  error("");
 });
 $("new").addEventListener("click", () => {
   if (busy) return;
@@ -193,23 +184,22 @@ function paintResult() {
   $("result-meta").textContent =
     `${job.width} × ${job.height}${job.elapsed > 0 ? ` · ${fmtTime(job.elapsed)}` : ""}`;
   $("rec-prompt").textContent =
-    cfg?.prompts?.join("\n") ||
-    t("Prompt unavailable.", "Prompt bilgisi bulunamadı.");
+    cfg?.prompts?.join("\n") || "Prompt unavailable.";
   rows("rec-main", [
-    [t("Size", "Boyut"), `${job.width} × ${job.height}`],
+    ["Size", `${job.width} × ${job.height}`],
     ["Seed", job.seed ?? cfg?.seed],
     [
-      t("Steps", "Adım"),
+      "Steps",
       cfg?.actual_steps ??
         (cfg?.steps ?? FIXED.steps) - (cfg?.skip_steps ?? FIXED.skip_steps),
     ],
-    [t("Time", "Süre"), job.elapsed > 0 ? fmtTime(job.elapsed) : "-"],
+    ["Time", job.elapsed > 0 ? fmtTime(job.elapsed) : "-"],
   ]);
   rows(
     "rec-tech",
     cfg
       ? [
-          [t("Model", "Model"), `${cfg.image_size ?? 512} uncond`],
+          ["Model", `${cfg.image_size ?? 512} uncond`],
           [
             "CLIP",
             (cfg.clip_models || []).map((n) => CLIP_NAMES[n] || n).join("\n"),
@@ -220,7 +210,7 @@ function paintResult() {
           ["Clamp", cfg.clamp_max],
           ["Cut batches", cfg.cutn_batches],
         ]
-      : [[t("Settings", "Ayarlar"), t("Unavailable", "Bulunamadı")]],
+      : [["Settings", "Unavailable"]],
   );
   $("rec-json").hidden = !cfg;
   $("reuse").disabled = !cfg?.prompts?.length;
@@ -247,14 +237,7 @@ async function view(job) {
   const loaded = new Promise((resolve, reject) => {
     image.onload = resolve;
     image.onerror = () =>
-      reject(
-        new Error(
-          t(
-            "Image could not be loaded. Try selecting it again.",
-            "Görsel yüklenemedi. Yeniden seçmeyi dene.",
-          ),
-        ),
-      );
+      reject(new Error("Image could not be loaded. Try selecting it again."));
   });
   image.src = `/api/result/${encodeURIComponent(job.id)}.png`;
   try {
@@ -262,8 +245,7 @@ async function view(job) {
     if (version !== viewVersion) return;
     current = { job, cfg };
     $("artwork").src = image.src;
-    $("artwork").alt =
-      cfg?.prompts?.join(" ") || t("Generated image", "Üretilen görsel");
+    $("artwork").alt = cfg?.prompts?.join(" ") || "Generated image";
     $("image-loading").hidden = true;
     $("result-actions").hidden = false;
     paintResult();
@@ -287,7 +269,7 @@ function paintHistory() {
     b.disabled = busy;
     b.setAttribute(
       "aria-label",
-      `${t("View image", "Görseli aç")} ${job.id.slice(0, 8)}, ${job.width} × ${job.height}`,
+      `${"View image"} ${job.id.slice(0, 8)}, ${job.width} × ${job.height}`,
     );
     b.setAttribute("aria-pressed", String(current?.job.id === job.id));
     b.title = `${job.width} × ${job.height}`;
@@ -311,9 +293,9 @@ async function loadHistory() {
       .filter((j) => j.state === "done" && j.width && j.height)
       .slice(0, 24);
     paintHistory();
-    $("refresh").textContent = t("Refresh", "Yenile");
+    $("refresh").textContent = "Refresh";
   } catch {
-    $("refresh").textContent = t("Retry history", "Geçmişi tekrar yükle");
+    $("refresh").textContent = "Retry history";
   }
 }
 $("refresh").addEventListener("click", loadHistory);
@@ -359,19 +341,17 @@ function paintProgress(job) {
   $("progress").hidden = false;
   const running = job.state === "running";
   $("progress-title").textContent = connectionLost
-    ? t("Reconnecting…", "Yeniden bağlanıyor…")
+    ? "Reconnecting…"
     : running
-      ? t("Taking shape", "Şekilleniyor")
-      : t("In the queue", "Sırada");
+      ? "Taking shape"
+      : "In the queue";
   $("bar").max = job.total || 240;
   $("bar").value = job.step || 0;
   $("progress-step").textContent = running
     ? `${job.step || 0} / ${job.total || 240}`
     : `#${job.position || 1}`;
   $("progress-time").textContent =
-    job.eta > 0
-      ? `${fmtTime(job.eta)} ${t("left", "kaldı")}`
-      : t("Please wait", "Biraz bekle");
+    job.eta > 0 ? `${fmtTime(job.eta)} ${"left"}` : "Please wait";
 }
 function preview(job) {
   const version = ++previewVersion;
@@ -384,7 +364,7 @@ function preview(job) {
     $("image-area").hidden = false;
     $("image-loading").hidden = true;
     $("artwork").src = img.src;
-    $("artwork").alt = t("Image taking shape", "Şekillenen görsel");
+    $("artwork").alt = "Image taking shape";
   };
   img.src = `/api/preview/${encodeURIComponent(id)}.jpg?n=${job.preview}`;
 }
@@ -405,12 +385,7 @@ async function watch(id) {
       if (res.status === 404) {
         finish();
         compose();
-        error(
-          t(
-            "This job is no longer available. You can create it again.",
-            "Bu iş artık bulunamıyor. Yeniden üretebilirsin.",
-          ),
-        );
+        error("This job is no longer available. You can create it again.");
         return;
       }
       if (!res.ok) throw new Error();
@@ -424,19 +399,13 @@ async function watch(id) {
         finish();
         await view(j);
         await loadHistory();
-        announce(t("Your image is ready.", "Görselin hazır."));
+        announce("Your image is ready.");
         return;
       }
       if (j.state === "error") {
         finish();
         compose();
-        error(
-          j.error ||
-            t(
-              "Generation failed. Try again.",
-              "Üretim başarısız oldu. Tekrar dene.",
-            ),
-        );
+        error(j.error || "Generation failed. Try again.");
         return;
       }
       paintProgress(j);
@@ -465,7 +434,7 @@ $("form").addEventListener("submit", async (e) => {
   lock(true);
   $("empty").hidden = true;
   $("progress").hidden = false;
-  $("progress-title").textContent = t("Starting…", "Başlıyor…");
+  $("progress-title").textContent = "Starting…";
   $("progress-step").textContent = "";
   $("progress-time").textContent = "";
   $("bar").value = 0;
@@ -489,28 +458,22 @@ $("form").addEventListener("submit", async (e) => {
       );
     }
     const j = await res.json();
-    if (!j.id)
-      throw new Error(
-        t("The server did not return a job.", "Sunucu iş bilgisi döndürmedi."),
-      );
+    if (!j.id) throw new Error("The server did not return a job.");
     active = j;
     store(
       "neodisco.active",
       JSON.stringify({ id: j.id, text, width: next.w, height: next.h }),
     );
     paintProgress(j);
-    announce(t("Creating your image.", "Görselin üretiliyor."));
+    announce("Creating your image.");
     watch(j.id);
   } catch (e) {
     finish();
     compose();
-    error(
-      e.message ||
-        t("Could not connect. Try again.", "Bağlantı kurulamadı. Tekrar dene."),
-    );
+    error(e.message || "Could not connect. Try again.");
   }
 });
-translate();
+compose();
 grow();
 loadHistory();
 // Restore only an unfinished job on this browser; do not carry a previous visitor's draft.

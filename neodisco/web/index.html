@@ -16,7 +16,6 @@
     />
     <meta property="og:type" content="website" />
     <meta property="og:locale" content="en_US" />
-    <meta property="og:locale:alternate" content="tr_TR" />
     <meta property="og:image" content="/og.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
@@ -26,20 +25,9 @@
     <link rel="apple-touch-icon" href="/icon-180.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="stylesheet" href="app.css" />
-    <script>
-      try {
-        if (localStorage.getItem("lang") === "tr") {
-          document.documentElement.setAttribute("data-lang", "tr");
-          document.documentElement.lang = "tr";
-        }
-      } catch (e) {}
-    </script>
   </head>
   <body>
-    <a class="skip" href="#prompt"
-      ><span lang="en">Skip to prompt</span
-      ><span lang="tr">Prompt'a geç</span></a
-    >
+    <a class="skip" href="#prompt">Skip to prompt</a>
     <header class="masthead">
       <div class="frame-brand">
         <a class="wordmark" href="/">NEODISCO / IMAGE SYNTHESIS</a
@@ -57,15 +45,8 @@
           ><svg viewBox="0 0 16 16" aria-hidden="true">
             <path
               d="M8 0a8 8 0 0 0-2.53 15.59c.4.07.55-.17.55-.38v-1.49c-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.4 7.4 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48v2.2c0 .21.15.46.55.38A8 8 0 0 0 8 0Z"
-            /></svg></a
-        ><button
-          class="lang-toggle"
-          id="lang"
-          type="button"
-          aria-label="Language / Dil"
-        >
-          TR
-        </button>
+            /></svg
+        ></a>
       </div>
     </header>
     <div class="frame-rail frame-rail-left" aria-hidden="true">
@@ -77,32 +58,24 @@
       <section class="stage" id="stage" aria-label="Canvas">
         <div class="canvas" id="canvas">
           <div class="empty-state" id="empty">
-            <h1>
-              <span lang="en">IMAGINE AN IMAGE.</span
-              ><span lang="tr">BİR GÖRSEL HAYAL ET.</span>
-            </h1>
-            <p>
-              <span lang="en">Choose a frame. Write a prompt.</span
-              ><span lang="tr">Bir kadraj seç. Hayalindekini yaz.</span>
-            </p>
+            <div
+              class="frame-preview"
+              id="frame-preview"
+              role="img"
+              aria-label="1280 by 768 pixel frame"
+            >
+              <span class="mono" id="frame-size">1280 × 768</span>
+              <span class="frame-hint">YOUR NEXT IMAGE</span>
+            </div>
           </div>
           <div class="empty-state waiting-state" id="waiting" hidden>
-            <h1>
-              <span lang="en">IMAGE IN PROGRESS</span
-              ><span lang="tr">GÖRSEL ÜRETİLİYOR</span>
-            </h1>
-            <p>
-              <span lang="en">Settle in. This can take a few minutes.</span
-              ><span lang="tr"
-                >Biraz zaman tanı. Bu birkaç dakika sürebilir.</span
-              >
-            </p>
+            <h1>IMAGE IN PROGRESS</h1>
+            <p>Settle in. This can take a few minutes.</p>
           </div>
           <div class="image-area" id="image-area" hidden>
             <img id="artwork" alt="" />
             <div class="image-loading" id="image-loading" hidden>
-              <span lang="en">Loading image…</span
-              ><span lang="tr">Görsel yükleniyor…</span>
+              Loading image…
             </div>
           </div>
         </div>
@@ -124,21 +97,14 @@
           <div class="result-actions" id="result-actions" hidden>
             <span id="result-meta" class="mono"></span
             ><button id="rec-toggle" type="button" class="text-button">
-              <span lang="en">Details</span
-              ><span lang="tr">Ayrıntılar</span></button
-            ><a id="rec-png" class="secondary" download
-              ><span lang="en">Save image ↓</span
-              ><span lang="tr">Görseli indir ↓</span></a
-            >
+              Details</button
+            ><a id="rec-png" class="secondary" download>Save image ↓</a>
           </div>
         </div>
       </section>
       <form class="composer" id="form">
         <fieldset>
-          <legend class="sr-only">
-            <span lang="en">Aspect ratio</span
-            ><span lang="tr">En boy oranı</span>
-          </legend>
+          <legend class="sr-only">Aspect ratio</legend>
           <div class="ratios" id="ratios">
             <button
               type="button"
@@ -203,9 +169,7 @@
           </div>
         </fieldset>
         <div class="prompt-box">
-          <label for="prompt" class="sr-only"
-            ><span lang="en">Describe your image</span
-            ><span lang="tr">Görselini tarif et</span></label
+          <label for="prompt" class="sr-only">Describe your image</label
           ><textarea
             id="prompt"
             rows="2"
@@ -215,8 +179,7 @@
             aria-describedby="prompt-help"
           ></textarea
           ><button id="go" class="primary" type="submit">
-            <span id="go-label"
-              ><span lang="en">Create</span><span lang="tr">Üret</span></span
+            <span id="go-label">Create</span
             ><svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
               <path
                 d="M5 12h14m-6-6 6 6-6 6"
@@ -230,69 +193,47 @@
         </div>
         <div class="prompt-footer">
           <button class="text-button" id="ex" type="button">
-            <span lang="en">Try an example ↗</span
-            ><span lang="tr">Bir örnek dene ↗</span></button
+            Try an example ↗</button
           ><span class="hint mono" id="next-size">1280 × 768</span
           ><span class="sr-only" id="prompt-help"
-            ><span lang="en"
-              >Describe the scene and artistic style. Press Control or Command
-              and Enter to create.</span
-            ><span lang="tr"
-              >Sahneyi ve tarzı anlat. Üretmek için Control veya Command ile
-              Enter'a bas.</span
-            ></span
+            >Describe the scene and artistic style. Press Control or Command and
+            Enter to create.</span
           >
         </div>
         <div class="error" id="err" role="alert" hidden></div>
       </form>
       <section class="history" aria-labelledby="history-title">
         <div class="history-heading">
-          <h2 id="history-title">
-            <span lang="en">Creations</span><span lang="tr">Üretimler</span>
-          </h2>
+          <h2 id="history-title">Creations</h2>
           <span id="history-count" class="mono"></span
           ><button id="new" class="text-button" type="button">
-            <span lang="en">＋ New image</span
-            ><span lang="tr">＋ Yeni görsel</span></button
+            ＋ New image</button
           ><button id="refresh" class="text-button" type="button">
-            <span lang="en">Refresh</span><span lang="tr">Yenile</span>
+            Refresh
           </button>
         </div>
         <div class="rail" id="rail"></div>
         <p class="history-empty" id="history-empty">
-          <span lang="en">Your creations will appear here.</span
-          ><span lang="tr">Ürettiklerin burada yerini alacak.</span>
+          Your creations will appear here.
         </p>
       </section>
       <p class="sr-only" id="announcement" role="status" aria-live="polite"></p>
     </main>
     <dialog id="record" aria-labelledby="rec-title">
       <div class="dialog-head">
-        <h2 id="rec-title">
-          <span lang="en">Image details</span
-          ><span lang="tr">Görsel ayrıntıları</span>
-        </h2>
-        <button id="rec-close" class="secondary" type="button">
-          <span lang="en">Close ✕</span><span lang="tr">Kapat ✕</span>
-        </button>
+        <h2 id="rec-title">Image details</h2>
+        <button id="rec-close" class="secondary" type="button">Close ✕</button>
       </div>
       <p id="rec-prompt"></p>
       <dl id="rec-main"></dl>
       <details>
-        <summary>
-          <span lang="en">Model &amp; guidance</span
-          ><span lang="tr">Model ve yönlendirme</span>
-        </summary>
+        <summary>Model &amp; guidance</summary>
         <dl id="rec-tech"></dl>
       </details>
       <div class="dialog-actions">
         <button id="reuse" class="secondary" type="button">
-          <span lang="en">Reuse prompt ↗</span
-          ><span lang="tr">Prompt'u kullan ↗</span></button
-        ><a id="rec-json" class="secondary" download
-          ><span lang="en">Settings JSON ↓</span
-          ><span lang="tr">Ayarlar JSON ↓</span></a
-        >
+          Reuse prompt ↗</button
+        ><a id="rec-json" class="secondary" download>Settings JSON ↓</a>
       </div>
     </dialog>
     <footer class="frame-credit">
