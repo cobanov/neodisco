@@ -30,13 +30,10 @@
     <a class="skip" href="#prompt">Skip to prompt</a>
     <header class="masthead">
       <div class="frame-brand">
-        <a class="wordmark" href="/">NEODISCO / IMAGE SYNTHESIS</a
-        ><span class="masthead-caption">GENERATIVE IMAGING</span>
+        <a class="wordmark" href="/" aria-label="Neodisco home">NEODISCO</a>
+        <span class="masthead-caption">IMAGE SYNTHESIS</span>
       </div>
-      <div class="frame-title">
-        <span class="frame-kicker">TEXT TO IMAGE</span
-        ><span class="frame-name">DISCO DIFFUSION</span>
-      </div>
+      <span class="frame-title">DISCO DIFFUSION</span>
       <div class="header-actions">
         <a
           class="nav-icon"
@@ -200,10 +197,9 @@
             </button>
           </div>
           <div class="prompt-footer">
-            <button class="text-button" id="ex" type="button">
-              Try an example ↗</button
+            <button class="text-button" id="ex" type="button">Example ↗</button
             ><button id="new" class="text-button" type="button">
-              ＋ New image</button
+              + New image</button
             ><span class="hint mono" id="next-size">1280 × 768</span
             ><span class="sr-only" id="prompt-help"
               >Describe the scene and artistic style. Press Control or Command
@@ -224,18 +220,26 @@
           <h2 id="rec-title">Next image</h2>
           <span id="rec-id" class="mono"></span>
         </div>
-        <p id="rec-prompt"></p>
-        <dl id="rec-main"></dl>
-        <div class="record-model">
-          <h3>Model &amp; guidance</h3>
-          <dl id="rec-tech"></dl>
+        <div class="record-body">
+          <p id="rec-prompt"></p>
+          <dl id="rec-main"></dl>
+          <div class="record-model">
+            <h3>Model &amp; guidance</h3>
+            <dl id="rec-tech"></dl>
+          </div>
         </div>
         <div class="result-actions" id="result-actions" hidden>
           <a id="rec-png" class="secondary" download>Save image ↓</a>
           <button id="reuse" class="secondary" type="button">
-            Reuse prompt ↗
+            Reuse prompt
           </button>
-          <a id="rec-json" class="secondary" download>Settings JSON ↓</a>
+          <a
+            id="rec-json"
+            class="secondary"
+            aria-label="Download settings JSON"
+            download
+            >Settings ↓</a
+          >
         </div>
       </aside>
     </main>

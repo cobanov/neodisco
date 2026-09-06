@@ -584,7 +584,7 @@ summary {
     opacity: 0.4;
   }
 }
-@media (max-height: 800px) and (min-width: 761px) {
+@media (max-height: 800px) and (min-width: 901px) {
   .stage {
     padding-top: 16px;
   }
@@ -601,7 +601,7 @@ summary {
     margin-bottom: 8px;
   }
 }
-@media (max-width: 760px) {
+@media (max-width: 900px) {
   .masthead {
     height: 56px;
     padding: 0 20px;
@@ -805,12 +805,12 @@ summary {
 .waiting-state h1 {
   font-size: clamp(20px, 2vw, 28px);
 }
-@media (max-height: 800px) and (min-width: 761px) {
+@media (max-height: 800px) and (min-width: 901px) {
   .empty-state h1 {
     font-size: 24px;
   }
 }
-@media (max-width: 760px) {
+@media (max-width: 900px) {
   .masthead {
     height: 76px;
     padding: 14px 20px 0;
@@ -890,26 +890,59 @@ summary {
   letter-spacing: 0.16em;
 }
 
-/* Desktop workspace: vertical history on the left, persistent record on the right.
-   Image and frame align to the bottom of the flexible stage, directly above
-   the composer. Extra height stays above the image, never between controls. */
+/* Workspace: shared outer alignment, separated header, readable side panels. */
+.masthead {
+  height: 88px;
+  margin: 0 32px;
+  padding: 0;
+  align-items: center;
+  gap: 24px;
+  border-bottom: 1px solid var(--line-strong);
+}
+.frame-brand {
+  display: flex;
+  align-items: baseline;
+  gap: 20px;
+}
+.wordmark {
+  border: 0;
+  padding: 0;
+  font-size: 22px;
+  font-weight: 300;
+  line-height: 1.2;
+  letter-spacing: 0.12em;
+}
+.masthead-caption {
+  margin: 0;
+  padding: 0;
+  font-size: 12px;
+  letter-spacing: 0.1em;
+}
+.frame-title {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0.1em;
+}
+.header-actions {
+  margin-left: 0;
+}
 .studio {
   width: calc(100% - 64px);
   max-width: none;
-  height: calc(100dvh - 96px);
-  min-height: 560px;
+  height: calc(100dvh - 152px);
+  min-height: 500px;
   display: grid;
-  grid-template-columns: 92px minmax(0, 1fr) 216px;
+  grid-template-columns: 112px minmax(0, 1fr) 280px;
   grid-template-areas: "history work record";
   gap: 0;
-  margin: 0 32px;
-}
-.masthead {
-  height: 68px;
-  padding-top: 12px;
+  margin: 24px 32px 0;
 }
 .frame-credit {
-  height: 28px;
+  height: 40px;
+  margin: 0 32px;
+  font-size: 10px;
+  letter-spacing: 0.12em;
 }
 .work-area {
   grid-area: work;
@@ -920,7 +953,7 @@ summary {
   padding: 0 24px;
 }
 .stage {
-  padding-top: 0;
+  padding: 0;
   min-height: 180px;
 }
 .image-area,
@@ -933,7 +966,7 @@ summary {
   padding: 0;
 }
 .canvas-status:has(.progress:not([hidden])) {
-  padding-top: 10px;
+  padding-top: 12px;
 }
 .composer {
   width: min(840px, 100%);
@@ -943,25 +976,36 @@ summary {
 fieldset {
   margin: 0 0 8px;
 }
+.ratios button {
+  font-size: 12px;
+}
 .prompt-box {
-  padding: 8px 10px 8px 16px;
+  padding: 10px 12px 10px 16px;
   gap: 16px;
 }
 textarea {
   height: 48px;
 }
+.primary {
+  font-size: 12px;
+  letter-spacing: 0.1em;
+}
 .prompt-footer {
-  min-height: 36px;
+  min-height: 44px;
   padding: 0;
+  gap: 12px;
 }
 .prompt-footer .text-button {
-  min-height: 36px;
+  min-height: 44px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
 }
 #next-size {
   margin-left: auto;
+  font-size: 11px;
 }
 #new {
-  margin-left: 12px;
+  margin-left: 8px;
   white-space: nowrap;
 }
 .history {
@@ -969,33 +1013,43 @@ textarea {
   min-height: 0;
   border: 0;
   border-right: 1px solid var(--line);
-  padding: 0 8px 0 0;
+  padding: 0 12px 0 0;
   display: flex;
   flex-direction: column;
 }
 .history-heading {
   flex: none;
-  height: auto;
-  min-height: 56px;
+  height: 68px;
   display: flex;
   flex-wrap: wrap;
+  align-items: baseline;
   align-content: flex-start;
   gap: 0 6px;
   margin: 0;
+  padding-top: 2px;
 }
-.history h2 {
-  font-size: 9px;
+.history h2,
+.record h2,
+.record h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.5;
   letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 #history-count {
-  font-size: 9px;
+  font-size: 11px;
 }
 #refresh {
   margin: 0;
-  min-height: 32px;
+  min-height: 44px;
   width: 100%;
+  padding: 8px 0;
   text-align: left;
-  font-size: 9px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
 }
 .rail {
   flex: 1;
@@ -1004,7 +1058,7 @@ textarea {
   overflow-y: auto;
   overflow-x: hidden;
   padding: 2px;
-  gap: 8px;
+  gap: 12px;
 }
 .thumb {
   flex: none;
@@ -1015,72 +1069,88 @@ textarea {
 }
 .thumb img {
   height: auto;
-  max-height: 132px;
+  max-height: 144px;
   object-fit: contain;
 }
 .history-empty {
-  font-size: 10px;
+  font-size: 12px;
   overflow-wrap: anywhere;
 }
 .record {
   grid-area: record;
   min-height: 0;
-  overflow-y: auto;
-  padding: 0 16px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0 0 0 24px;
   border-left: 1px solid var(--line);
-  border-right: 0;
   scrollbar-width: thin;
   scrollbar-color: var(--line-strong) transparent;
 }
 .record-heading {
-  min-height: 40px;
+  flex: none;
+  min-height: 60px;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  padding-top: 2px;
 }
-.record h2,
-.record h3 {
-  margin: 0;
-  font-size: 10px;
-  font-weight: 500;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-}
-#rec-id {
-  font-size: 8px;
-  color: var(--muted);
-}
-#rec-prompt {
-  font-size: 11px;
-  line-height: 1.7;
-  max-height: 180px;
+.record-body {
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+.record-body::-webkit-scrollbar {
+  width: 4px;
+}
+.record-body::-webkit-scrollbar-thumb {
+  background: #444;
+  border-radius: 2px;
+}
+#rec-id {
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+#rec-prompt {
+  font-size: 14px;
+  line-height: 1.65;
 }
 .record dl {
-  grid-template-columns: 64px minmax(0, 1fr);
-  gap: 8px 8px;
-  margin: 16px 0;
-  font-size: 10px;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: 8px 12px;
+  margin: 20px 0;
+  font-size: 13px;
 }
 .record dd {
-  font-size: 10px;
+  font-size: 13px;
+  line-height: 1.6;
 }
 .record-model {
   border-top: 1px solid var(--line);
-  padding-top: 16px;
+  padding-top: 20px;
 }
 .result-actions {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
+  flex: none;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
   border-top: 1px solid var(--line);
-  padding: 16px 0;
+  padding: 16px 0 0;
+}
+#rec-png {
+  grid-column: 1 / -1;
 }
 .result-actions .secondary {
-  font-size: 10px;
+  min-width: 0;
+  padding: 8px;
+}
+.result-actions .secondary {
+  font-size: 12px;
+  letter-spacing: 0.06em;
 }
 .frame-rail,
 .frame-ticks {
@@ -1088,17 +1158,20 @@ textarea {
 }
 @media (min-width: 1700px) {
   .studio {
-    grid-template-columns: 108px minmax(0, 1fr) 232px;
+    grid-template-columns: 120px minmax(0, 1fr) 296px;
   }
 }
-@media (min-width: 761px) and (max-width: 1100px) {
+@media (min-width: 901px) and (max-width: 1200px) {
+  .masthead {
+    margin: 0 24px;
+  }
   .studio {
-    width: calc(100% - 32px);
-    margin: 0 16px;
-    grid-template-columns: 76px minmax(0, 1fr) 176px;
+    width: calc(100% - 48px);
+    margin: 24px 24px 0;
+    grid-template-columns: 100px minmax(0, 1fr) 256px;
   }
   .record {
-    padding: 0 10px;
+    padding-left: 16px;
   }
   .work-area {
     padding: 0 16px;
@@ -1110,65 +1183,101 @@ textarea {
     flex: 1;
     padding: 0 6px;
     gap: 4px;
-    font-size: 10px;
   }
   .ratios i {
     display: none;
   }
-  #rec-id {
+  .frame-credit {
+    margin: 0 24px;
+  }
+  #history-count {
     display: none;
   }
+  .prompt-footer {
+    flex-wrap: wrap;
+    gap: 0 12px;
+  }
 }
-@media (max-width: 760px) {
+@media (max-width: 900px) {
   .masthead {
-    height: 64px;
+    height: 80px;
+    margin: 0 16px;
+    gap: 12px;
+  }
+  .frame-brand {
+    display: block;
+  }
+  .wordmark {
+    font-size: 20px;
+  }
+  .masthead-caption {
+    display: block;
+    font-size: 10px;
+    margin-top: 6px;
+  }
+  .frame-title {
+    display: none;
+  }
+  .header-actions {
+    margin-left: auto;
   }
   .studio {
-    display: grid;
     grid-template-columns: minmax(0, 1fr);
     grid-template-areas: "work" "history" "record";
     height: auto;
     min-height: 0;
     width: calc(100% - 32px);
-    margin: 0 16px;
+    margin: 20px 16px 0;
   }
   .work-area {
     padding: 0;
-    height: calc(100dvh - 192px);
-    min-height: 460px;
+    height: auto;
+    min-height: 0;
   }
   .stage {
+    flex: none;
+    height: min(60dvh, calc((100vw - 32px) / var(--canvas-ratio, 1.666667)));
     min-height: 180px;
+    padding: 0;
   }
   .composer {
     padding: 8px 0 0;
   }
-  fieldset {
-    margin-bottom: 8px;
+  .ratios {
+    gap: 0;
+  }
+  .ratios button {
+    padding: 0 4px;
+    gap: 4px;
   }
   .prompt-box {
-    padding: 8px 10px 8px 14px;
+    padding: 10px 10px 10px 14px;
   }
   .prompt-footer {
-    gap: 8px;
+    gap: 0 10px;
     flex-wrap: wrap;
   }
   #new {
-    margin-left: auto;
-    font-size: 9px;
+    margin-left: 0;
   }
   #next-size {
-    font-size: 8px;
+    width: auto;
+    margin-left: auto;
+    padding: 0;
+    text-align: right;
   }
   .history {
     border-right: 0;
     border-top: 1px solid var(--line);
-    padding: 4px 0 8px;
+    padding: 12px 0 20px;
+    margin-top: 12px;
   }
   .history-heading {
-    min-height: 36px;
-    align-items: center;
+    height: 44px;
+    align-items: baseline;
+    align-content: center;
     gap: 8px;
+    padding: 0;
   }
   #refresh {
     width: auto;
@@ -1178,12 +1287,12 @@ textarea {
     flex-direction: row;
     overflow-x: auto;
     overflow-y: hidden;
-    height: 76px;
+    height: 88px;
     flex: none;
   }
   .thumb {
     width: auto;
-    height: 68px;
+    height: 80px;
     min-width: 48px;
   }
   .thumb img {
@@ -1193,35 +1302,33 @@ textarea {
   }
   .record {
     border-left: 0;
-    border-right: 0;
     border-top: 1px solid var(--line);
-    padding: 12px 0;
+    padding: 24px 0 0;
     overflow: visible;
   }
+  .record-heading {
+    min-height: 64px;
+  }
   .record dl {
-    grid-template-columns: 100px minmax(0, 1fr);
+    grid-template-columns: 112px minmax(0, 1fr);
+    font-size: 14px;
+  }
+  .record dd {
+    font-size: 14px;
   }
   #rec-prompt {
     max-height: none;
   }
+  .record-body {
+    overflow: visible;
+    flex: none;
+  }
   .result-actions {
-    flex-direction: row;
-    flex-wrap: wrap;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .frame-credit {
-    height: 28px;
-  }
-}
-
-@media (max-width: 760px) {
-  .work-area {
-    height: auto;
-    min-height: 0;
-  }
-  .stage {
-    flex: none;
-    height: min(60dvh, calc((100vw - 32px) / var(--canvas-ratio, 1.666667)));
-    min-height: 180px;
-    padding: 0;
+    height: 56px;
+    margin: 0 16px;
+    font-size: 9px;
   }
 }
