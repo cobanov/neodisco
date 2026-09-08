@@ -31,20 +31,224 @@ const CLIP_NAMES = {
   RN50x64: "RN50x64",
 };
 
-// Dönemin kalıbı: konu + sanatçı isimleri + trending on artstation. İsimler o zaman
-// işin yarısını taşıyordu.
-const EXAMPLES = [
-  "A colossal derelict starship drifting past a gas giant, galactic soldiers on the hull, by greg rutkowski and john berkey and thomas kinkade, Trending on artstation.",
-  "An enormous war fleet emerging from hyperspace above a ringed planet, epic scale, by ralph mcquarrie and greg rutkowski and john harris, matte painting, Trending on artstation.",
-  "A titanic space station orbiting a dying star with tiny fighters swarming its spine, by john berkey and syd mead and thomas kinkade, cinematic, Trending on artstation.",
-  "An ancient alien megastructure rising above a storm ocean, lightning between its towers, by zdzislaw beksinski and greg rutkowski, dramatic, Trending on artstation.",
-  "A dreadnought breaking through the cloud layer above a burning city, by john harris and ralph mcquarrie and greg rutkowski, epic, Trending on artstation.",
-  "The cathedral-sized engines of a generation ship, crew silhouettes against the glow, volumetric light, by john berkey and thomas kinkade, Trending on artstation.",
-  "A black hole devouring a shattered moon, warships silhouetted against the accretion disk, by chesley bonestell and greg rutkowski and john harris, Trending on artstation.",
-  "A frozen orbital shipyard on an ice world, colossal hulls under construction, by syd mead and simon stalenhag and greg rutkowski, Trending on artstation.",
-  "A cathedral of glowing coral grown over a sunken cruiser, shafts of light, by zdzislaw beksinski and thomas kinkade, Trending on artstation.",
-  "A lone walker crossing the shadow of an orbital ring at dusk, by simon stalenhag and john harris, Trending on artstation.",
+// Keep the original Disco structure, with compatible subjects/settings/artists.
+// A shuffled deck visits every subject before repeating, without extra UI.
+const EXAMPLE_WORLDS = [
+  {
+    subjects: [
+      "A colossal derelict starship",
+      "A sprawling orbital shipyard",
+      "An ancient alien megastructure",
+      "A fleet of interstellar arks",
+    ],
+    settings: [
+      "above a ringed gas giant",
+      "at the edge of a luminous nebula",
+      "beside a shattered moon",
+      "in orbit around a dying star",
+    ],
+    details: [
+      "tiny exploration vessels revealing the immense scale",
+      "intricate machinery silhouetted against the void",
+      "fragments of ancient technology drifting nearby",
+      "glowing structures stretching into the distance",
+    ],
+    artists: [
+      "john berkey",
+      "john harris",
+      "ralph mcquarrie",
+      "chesley bonestell",
+      "syd mead",
+    ],
+  },
+  {
+    subjects: [
+      "A monumental alien observatory",
+      "A caravan of towering mechanical walkers",
+      "A forgotten city of crystal spires",
+      "A vast temple carved into a meteorite",
+    ],
+    settings: [
+      "on a windswept desert planet",
+      "beneath the rings of an alien sky",
+      "on the rim of a volcanic crater",
+      "across a frozen extraterrestrial plain",
+    ],
+    details: [
+      "a lone explorer in the foreground",
+      "ancient geometric markings covering the surfaces",
+      "distant mountains revealing a monumental scale",
+      "delicate mineral formations surrounding the scene",
+    ],
+    artists: [
+      "moebius",
+      "roger dean",
+      "ralph mcquarrie",
+      "john harris",
+      "simon stalenhag",
+    ],
+  },
+  {
+    subjects: [
+      "A cathedral of luminous coral",
+      "A forgotten palace of pearl and glass",
+      "A colossal sunken ocean liner",
+      "An underwater garden of giant anemones",
+    ],
+    settings: [
+      "on the floor of a deep ocean trench",
+      "beneath a canopy of drifting jellyfish",
+      "among the ruins of a submerged city",
+      "inside a vast underwater cavern",
+    ],
+    details: [
+      "schools of tiny fish winding through the scene",
+      "delicate sea fans growing over every surface",
+      "suspended particles tracing the ocean currents",
+      "a small diver revealing the immense scale",
+    ],
+    artists: [
+      "ernst haeckel",
+      "ivan aivazovsky",
+      "james gurney",
+      "roger dean",
+      "thomas kinkade",
+    ],
+  },
+  {
+    subjects: [
+      "A labyrinth of impossible staircases",
+      "A floating palace of carved stone",
+      "A deserted library with towering arches",
+      "A clockwork cathedral with mirrored towers",
+    ],
+    settings: [
+      "above a sea of clouds",
+      "at the edge of an endless salt flat",
+      "within a dreamlike mountain valley",
+      "beside a perfectly still lake",
+    ],
+    details: [
+      "a solitary figure wandering through the scene",
+      "long shadows forming intricate geometric patterns",
+      "delicate bridges connecting distant structures",
+      "weathered sculptures guarding forgotten entrances",
+    ],
+    artists: [
+      "giorgio de chirico",
+      "rene magritte",
+      "m. c. escher",
+      "zdzislaw beksinski",
+      "giovanni battista piranesi",
+    ],
+  },
+  {
+    subjects: [
+      "An ancient forest of towering redwoods",
+      "A hidden garden of giant flowers",
+      "A ruined sanctuary reclaimed by moss",
+      "A village woven into enormous tree roots",
+    ],
+    settings: [
+      "beside a cascading mountain waterfall",
+      "in a secluded alpine valley",
+      "along the shore of a quiet lake",
+      "on a misty island of steep cliffs",
+    ],
+    details: [
+      "a narrow path inviting the viewer into the distance",
+      "delicate leaves scattered across weathered stones",
+      "tiny birds circling above the canopy",
+      "wildflowers emerging from cracks in the stone",
+    ],
+    artists: [
+      "albert bierstadt",
+      "caspar david friedrich",
+      "ivan shishkin",
+      "thomas kinkade",
+      "james gurney",
+    ],
+  },
+  {
+    subjects: [
+      "A retrofuturistic railway terminal",
+      "A sprawling city of elevated gardens",
+      "A giant abandoned research machine",
+      "A hillside settlement of modular towers",
+    ],
+    settings: [
+      "overlooking a rain-soaked metropolis",
+      "along a remote northern coastline",
+      "at the boundary between a city and a forest",
+      "beneath a vast network of suspended bridges",
+    ],
+    details: [
+      "small human silhouettes among monumental structures",
+      "intricate cables and walkways connecting the scene",
+      "weathered metal contrasting with lush vegetation",
+      "distant windows glowing through the atmosphere",
+    ],
+    artists: [
+      "syd mead",
+      "simon stalenhag",
+      "moebius",
+      "hugh ferriss",
+      "ralph mcquarrie",
+    ],
+  },
 ];
+const EXAMPLE_PALETTES = [
+  "cobalt blue and warm amber",
+  "emerald green and antique gold",
+  "dusty rose and slate gray",
+  "deep violet and pale peach",
+  "burnt orange and muted teal",
+  "ivory and charcoal",
+  "copper and midnight blue",
+  "sage green and soft lavender",
+];
+const EXAMPLE_LIGHTING = [
+  "soft diffused light",
+  "dramatic backlighting",
+  "a gentle luminous haze",
+  "subtle rim lighting and deep shadows",
+  "delicate light revealing intricate textures",
+];
+const EXAMPLE_FINISHES = [
+  "a detailed matte painting",
+  "a painterly cinematic composition",
+  "an atmospheric illustration with intricate detail",
+];
+const pickExamplePart = (items) =>
+  items[Math.floor(Math.random() * items.length)];
+function shuffleExamples(items) {
+  const shuffled = [...items];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+}
+let exampleDeck = [];
+let previousExampleSubject = null;
+function buildExamplePrompt() {
+  if (!exampleDeck.length) {
+    exampleDeck = shuffleExamples(
+      EXAMPLE_WORLDS.flatMap((world) =>
+        world.subjects.map((subject) => ({ world, subject })),
+      ),
+    );
+    // Avoid repeating a subject at the boundary between two decks as well.
+    const last = exampleDeck.length - 1;
+    if (exampleDeck[last].subject === previousExampleSubject) {
+      [exampleDeck[0], exampleDeck[last]] = [exampleDeck[last], exampleDeck[0]];
+    }
+  }
+  const { world, subject } = exampleDeck.pop();
+  previousExampleSubject = subject;
+  const artists = shuffleExamples(world.artists).slice(0, 2).join(" and ");
+  return `${subject} ${pickExamplePart(world.settings)}, ${pickExamplePart(world.details)}, ${pickExamplePart(EXAMPLE_LIGHTING)}, ${pickExamplePart(EXAMPLE_PALETTES)} color palette, by ${artists}, ${pickExamplePart(EXAMPLE_FINISHES)}, Trending on artstation.`;
+}
 
 // Composition is deliberately limited to a prompt and a preset frame.
 let next = { w: 1280, h: 768 };
@@ -169,8 +373,8 @@ $("prompt").addEventListener("keydown", (e) => {
   }
 });
 $("ex").addEventListener("click", () => {
-  const options = EXAMPLES.filter((x) => x !== $("prompt").value);
-  $("prompt").value = options[Math.floor(Math.random() * options.length)];
+  if (busy) return;
+  $("prompt").value = buildExamplePrompt();
   grow();
   if (!current) paintPending();
   $("prompt").focus();
